@@ -1,0 +1,35 @@
+{
+  "event_name": "Sarah's 30th",
+  "event_emoji": "🎉",
+  "active": true,
+  "templates": {
+    "single-classic": {
+      "label": "Classic Frame",
+      "shots": 1,
+      "overlay": "overlays/overlay_classic.png",
+      "composite": "build_single",
+      "print_desc": "Full-frame 4×6 · dark border"
+    },
+    "single-gold": {
+      "label": "Gold Corners",
+      "shots": 1,
+      "overlay": "overlays/overlay_goldcorners.png",
+      "composite": "build_single",
+      "print_desc": "Full-frame 4×6 · gold corner accents"
+    },
+    "strip-film": {
+      "label": "Film Strip",
+      "shots": 4,
+      "overlay": "overlays/overlay_filmstrip.png",
+      "composite": "build_strip",
+      "print_desc": "4-shot strip · retro film surround"
+    },
+    "strip-party": {
+      "label": "Party Grid",
+      "shots": 4,
+      "overlay": "overlays/overlay_partygrid.png",
+      "composite": "build_strip",
+      "print_desc": "4-shot 2×2 grid · festive overlay"
+    }
+  }
+}

@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>PhotoBooth</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+:root {
+  --bg:     #0C0C0C;
+  --mid:    #181818;
+  --card:   #1E1E1E;
+  --border: #2C2C2C;
+  --white:  #F0EDE8;
+  --muted:  #555;
+  --dim:    #888;
+  --yellow: #F5C842;
+  --red:    #E8412A;
+  --green:  #3DD68C;
+  --display: 'Bebas Neue', sans-serif;
+  --body:    'DM Sans', sans-serif;
+}
+
+html, body { height:100%; overflow:hidden; }
+
+body {
+  background: var(--bg);
+  color: var(--white);
+  font-family: var(--body);
+}
+
+/* grain */
+body::after {
+  content:''; position:fixed; inset:0; z-index:999; pointer-events:none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  opacity: 0.35;
+}
+
+/* ── SCREENS ── */
+.screen {
+  display:none; flex-direction:column; align-items:center; justify-content:center;
+  height:100dvh; padding:32px 24px; text-align:center;
+  position:absolute; inset:0;
+}
+.screen.active {
+  display:flex;
+  animation: rise 0.35s cubic-bezier(0.22,1,0.36,1);
+}
+@keyframes rise { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:none} }
+
+.eyebrow {
+  font-size:10px; letter-spacing:0.22em; text-transform:uppercase;
+  color:var(--muted); margin-bottom:12px;
+}
+.title {
+  font-family:var(--display); font-size:56px; line-height:0.92;
+  letter-spacing:0.02em; margin-bottom:14px;
+}
+.subtitle {
+  font-size:15px; color:var(--dim); line-height:1.55; max-width:300px;
+  margin-bottom:28px;
+}
+.pill-btn {
+  background:var(--yellow); color:var(--bg); border:none; border-radius:100px;
+  font-family:var(--body); font-size:16px; font-weight:600;
+  padding:14px 48px; cursor:pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.pill-btn:active {
+  transform:scale(0.96);
+}
+.pill-btn.ghost {
+  background:transparent; border:1px solid var(--border); color:var(--white);
+}
+
+/* ═══════════════════════════════════════
+   SCREEN 1 — WELCOME
+   ═══════════════════════════════════════ */
+#s1 .marquee-row {
+  display:flex; gap:14px; margin-bottom:40px;
+}
+#s1 .bulb {
+  width:22px; height:28px;
+  border-radius:50% 50% 38% 38%;
+  animation: glow 2s ease-in-out infinite;
+}
+#s1 .bulb:nth-child(1) { background:#E8412A; animation-delay:0s; }
+#s1 .bulb:nth-child(2) { background:#F5C842; animation-delay:0.3s; }
+#s1 .bulb:nth-child(3) { background:#3DD68C; animation-delay:0.6s; }
+#s1 .bulb:nth-child(4) { background:#4DA6FF; animation-delay:0.9s; }
+#s1 .bulb:nth-child(5) { background:#E8412A; animation-delay:1.2s; }
+@keyframes glow {
+  0%,100%{ opacity:1; filter:brightness(1); }
+  50%{ opacity:0.45; filter:brightness(0.6); }
+}
+
+/* ═══════════════════════════════════════
+   SCREEN 2 — TEMPLATE SELECTION
+   ═══════════════════════════════════════ */
+.tpl-grid {
+  display:grid; grid-template-columns:1fr 1fr; gap:10px;
+  width:100%; max-width:340px; margin-bottom:20px;
+}
+.tpl-card {
+  background:var(--card); border:1px solid var(--border); border-radius:10px;
+  padding:14px 10px 12px; cursor:pointer; text-align:center;
+  transition: border-color 0.15s, transform 0.12s;
+  position:relative; overflow:hidden;
+}
+.tpl-card:active { transform:scale(0.97); }
+.tpl-card.selected {
+  border-color:var(--yellow);
+  box-shadow: 0 0 0 1px var(--yellow);
+}
+.tpl-card .preview {
+  width:100%; aspect-ratio:4/3; border-radius:6px; margin-bottom:8px;
+  background:var(--mid); display:flex; align-items:center; justify-content:center;
+  overflow:hidden; position:relative;
+}
+.tpl-card .tpl-name {
+  font-size:13px; font-weight:600; margin-bottom:2px;
+}
+.tpl-card .tpl-shots {
+  font-size:11px; color:var(--muted);
+}
+
+/* Preview decorations — CSS stand-ins for real overlay thumbnails */
+.preview-classic {
+  border:3px solid #333; border-radius:4px;
+}
+.preview-classic::after {
+  content:'📷'; font-size:28px;
+}
+.preview-gold .corner {
+  position:absolute; width:18px; height:18px;
+  border:2px solid var(--yellow);
+}
+.preview-gold .corner.tl { top:6px; left:6px; border-right:none; border-bottom:none; }
+.preview-gold .corner.tr { top:6px; right:6px; border-left:none; border-bottom:none; }
+.preview-gold .corner.bl { bottom:6px; left:6px; border-right:none; border-top:none; }
+.preview-gold .corner.br { bottom:6px; right:6px; border-left:none; border-top:none; }
+.preview-gold::after { content:'📷'; font-size:28px; }
+
+.preview-strip {
+  display:grid !important; grid-template-rows:repeat(4,1fr); gap:3px; padding:5px;
+}
+.preview-strip .frame {
+  background:var(--border); border-radius:2px; display:flex;
+  align-items:center; justify-content:center; font-size:10px; color:var(--muted);
+}
+/* sprocket holes */
+.preview-strip::before, .preview-strip::after {
+  content:''; position:absolute; top:0; bottom:0; width:8px;
+  background: repeating-linear-gradient(
+    to bottom, transparent 0px, transparent 4px, var(--bg) 4px, var(--bg) 8px,
+    transparent 8px, transparent 14px
+  );
+}
+.preview-strip::before { left:0; }
+.preview-strip::after  { right:0; }
+
+.preview-party {
+  display:grid !important; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr;
+  gap:3px; padding:6px;
+}
+.preview-party .frame {
+  background:var(--border); border-radius:3px; display:flex;
+  align-items:center; justify-content:center; font-size:10px; color:var(--muted);
+}
+.preview-party::after {
+  content:''; position:absolute; inset:0;
+  background: repeating-linear-gradient(45deg, transparent, transparent 8px, rgba(245,200,66,0.06) 8px, rgba(245,200,66,0.06) 10px);
+  pointer-events:none;
+}
+
+/* ═══════════════════════════════════════
+   SCREEN 3 — DIRECTIONS
+   ═══════════════════════════════════════ */
+.direction-list {
+  list-style:none; text-align:left; max-width:280px; margin-bottom:32px;
+}
+.direction-list li {
+  font-size:15px; color:var(--dim); line-height:1.6; padding:6px 0;
+  padding-left:28px; position:relative;
+}
+.direction-list li::before {
+  position:absolute; left:0; font-size:14px;
+}
+.direction-list li:nth-child(1)::before { content:'🎩'; }
+.direction-list li:nth-child(2)::before { content:'🪑'; }
+.direction-list li:nth-child(3)::before { content:'😁'; }
+
+/* ═══════════════════════════════════════
+   SCREEN 4 — COUNTDOWN / SHUTTER
+   ═══════════════════════════════════════ */
+.shoot-info {
+  font-size:13px; color:var(--dim); margin-bottom:6px;
+}
+.pips {
+  display:flex; gap:8px; margin-bottom:28px;
+}
+.pip {
+  width:10px; height:10px; border-radius:50%;
+  background:var(--border); transition:background 0.2s;
+}
+.pip.done  { background:var(--green); }
+.pip.active { background:var(--yellow); box-shadow:0 0 8px rgba(245,200,66,0.5); }
+
+.countdown-num {
+  font-family:var(--display); font-size:120px; line-height:1;
+  min-height:130px; display:flex; align-items:center; justify-content:center;
+  transition: transform 0.12s;
+}
+.countdown-num.flash {
+  transform:scale(1.15);
+}
+.countdown-num.snap {
+  color:var(--yellow);
+  transform:scale(1.3);
+}
+
+.countdown-sub {
+  font-size:14px; color:var(--dim); margin-bottom:32px; min-height:22px;
+}
+
+.shutter-btn {
+  width:80px; height:80px; border-radius:50%;
+  background:var(--red); border:4px solid rgba(240,237,232,0.15);
+  cursor:pointer; position:relative;
+  transition: transform 0.1s, opacity 0.15s;
+  box-shadow: 0 0 0 0 rgba(232,65,42,0);
+}
+.shutter-btn:active { transform:scale(0.92); }
+.shutter-btn.off {
+  opacity:0.25; pointer-events:none;
+}
+.shutter-btn::after {
+  content:''; position:absolute; inset:6px; border-radius:50%;
+  border:2px solid rgba(240,237,232,0.2);
+}
+
+/* ═══════════════════════════════════════
+   SCREEN 5 — REVIEW
+   ═══════════════════════════════════════ */
+.review-preview {
+  width:100%; max-width:300px; aspect-ratio:3/2;
+  background:var(--card); border:1px solid var(--border); border-radius:10px;
+  margin-bottom:12px; display:flex; align-items:center; justify-content:center;
+  overflow:hidden; position:relative;
+}
+.review-single { font-size:48px; }
+.review-strip {
+  display:grid; grid-template-rows:repeat(4,1fr); gap:4px;
+  padding:10px; width:100%; height:100%;
+}
+.review-grid {
+  display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr;
+  gap:4px; padding:10px; width:100%; height:100%;
+}
+.review-cell {
+  background:var(--mid); border-radius:4px; display:flex;
+  align-items:center; justify-content:center; font-size:18px; color:var(--muted);
+}
+
+.review-meta {
+  font-size:12px; color:var(--muted); margin-bottom:24px;
+}
+
+.review-actions {
+  display:flex; flex-direction:column; gap:10px; width:100%; max-width:300px;
+}
+.review-actions .pill-btn { width:100%; }
+.action-desc {
+  font-size:11px; color:var(--muted); margin-top:-4px; margin-bottom:4px;
+}
+
+/* ═══════════════════════════════════════
+   SCREEN 6 — DONE
+   ═══════════════════════════════════════ */
+.done-check {
+  width:64px; height:64px; border-radius:50%;
+  background:rgba(61,214,140,0.12); border:2px solid var(--green);
+  display:flex; align-items:center; justify-content:center;
+  font-size:28px; margin-bottom:20px;
+  animation: popIn 0.4s cubic-bezier(0.34,1.56,0.64,1);
+}
+@keyframes popIn { from{transform:scale(0);opacity:0} to{transform:scale(1);opacity:1} }
+</style>
+</head>
+<body>
+
+<!-- ════════════════ SCREEN 1 : WELCOME ════════════════ -->
+<div class="screen active" id="s1">
+  <div class="eyebrow">PhotoBooth</div>
+  <div class="marquee-row">
+    <div class="bulb"></div><div class="bulb"></div><div class="bulb"></div>
+    <div class="bulb"></div><div class="bulb"></div>
+  </div>
+  <div class="title" id="welcomeTitle">Rowan's 45th</div>
+  <div class="subtitle">Step up, pick a style, and we'll handle the rest. Free prints for everyone!</div>
+  <button class="pill-btn" onclick="go(2)">Let's Go</button>
+</div>
+
+<!-- ════════════════ SCREEN 2 : TEMPLATE SELECT ════════════════ -->
+<div class="screen" id="s2">
+  <div class="eyebrow">Choose Your Style</div>
+  <div class="title" style="font-size:40px; margin-bottom:20px;">Pick a Look</div>
+
+  <div class="tpl-grid" id="tplGrid"></div>
+
+  <button class="pill-btn" id="btnNext" onclick="go(3)" style="opacity:0.3;pointer-events:none;">
+    Next
+  </button>
+</div>
+
+<!-- ════════════════ SCREEN 3 : DIRECTIONS ════════════════ -->
+<div class="screen" id="s3">
+  <div class="eyebrow" id="dirLabel">Classic Frame · 1 shot</div>
+  <div class="title" style="font-size:48px;">Are Ya<br>Ready?</div>
+  <ul class="direction-list">
+    <li>Grab props — hats, glasses, signs</li>
+    <li>Get everyone in frame</li>
+    <li>Big smiles — you've got this</li>
+  </ul>
+  <button class="pill-btn" onclick="startShooting()">I'm Ready</button>
+</div>
+
+<!-- ════════════════ SCREEN 4 : SHUTTER / COUNTDOWN ════════════════ -->
+<div class="screen" id="s4">
+  <div class="shoot-info" id="shootInfo">Film Strip · Shot 1 of 4</div>
+  <div class="pips" id="pips"></div>
+  <div class="countdown-num" id="cNum">—</div>
+  <div class="countdown-sub" id="cSub">Tap the button when ready</div>
+  <button class="shutter-btn" id="shutterBtn" onclick="triggerShot()"></button>
+</div>
+
+<!-- ════════════════ SCREEN 5 : REVIEW ════════════════ -->
+<div class="screen" id="s5">
+  <div class="eyebrow">Your Photo</div>
+  <div class="review-preview" id="reviewPreview"></div>
+  <div class="review-meta" id="reviewMeta">Rowan's 45th · Classic Frame · just now</div>
+  <div class="review-actions">
+    <div class="action-desc" id="printDesc">Full-frame 4×6 · dark border</div>
+    <button class="pill-btn" onclick="doPrint()">🖨 Print It</button>
+    <div class="action-desc" id="dlDesc">Single portrait · saves to camera roll</div>
+    <button class="pill-btn ghost" onclick="doDownload()">📲 Download Only</button>
+  </div>
+</div>
+
+<!-- ════════════════ SCREEN 6 : DONE ════════════════ -->
+<div class="screen" id="s6">
+  <div class="done-check">✓</div>
+  <div class="title" style="font-size:44px;" id="doneTitle">Printing!</div>
+  <div class="subtitle" id="doneSub">Your photo is on its way. Grab it from the printer in about 30 seconds.</div>
+  <button class="pill-btn ghost" onclick="reset()" style="margin-top:8px;">Start Over</button>
+</div>
+
+
+<script>
+// ══════════════════════════════════════════════════════════════
+//  CONFIG — mirrors config.json on the Pi
+// ══════════════════════════════════════════════════════════════
+
+const MOCK = true;
+
+const EVENT = {
+  name: "Rowan's 45th",
+  emoji: '🎉'
+};
+
+const TEMPLATES = {
+  'single-classic': {
+    label: 'Classic Frame',
+    shots: 1,
+    previewType: 'single',
+    previewClass: 'preview-classic',
+    printDesc: 'Full-frame 4×6 · dark border',
+    overlay: 'overlays/overlay_classic.png',
+    composite: 'build_single'
+  },
+  'single-gold': {
+    label: 'Gold Corners',
+    shots: 1,
+    previewType: 'single',
+    previewClass: 'preview-gold',
+    printDesc: 'Full-frame 4×6 · gold corner accents',
+    overlay: 'overlays/overlay_goldcorners.png',
+    composite: 'build_single'
+  },
+  'strip-film': {
+    label: 'Film Strip',
+    shots: 4,
+    previewType: 'strip',
+    previewClass: 'preview-strip',
+    printDesc: '4-shot strip · retro film surround',
+    overlay: 'overlays/overlay_filmstrip.png',
+    composite: 'build_strip'
+  },
+  'strip-party': {
+    label: 'Party Grid',
+    shots: 4,
+    previewType: 'grid',
+    previewClass: 'preview-party',
+    printDesc: '4-shot 2×2 grid · festive overlay',
+    overlay: 'overlays/overlay_partygrid.png',
+    composite: 'build_strip'
+  }
+};
+
+// ── State ──
+let selectedId  = null;
+let currentShot = 0;
+let counting    = false;
+let sessionToken = null;
+
+// ══════════════════════════════════════════════════════════════
+//  NAVIGATION
+// ══════════════════════════════════════════════════════════════
+
+function go(n) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('s' + n).classList.add('active');
+}
+
+function reset() {
+  selectedId = null;
+  currentShot = 0;
+  counting = false;
+  sessionToken = null;
+  document.querySelectorAll('.tpl-card').forEach(c => c.classList.remove('selected'));
+  const btn = document.getElementById('btnNext');
+  btn.style.opacity = '0.3';
+  btn.style.pointerEvents = 'none';
+  go(1);
+}
+
+// ══════════════════════════════════════════════════════════════
+//  SCREEN 2 — TEMPLATE CARDS (built dynamically from config)
+// ══════════════════════════════════════════════════════════════
+
+function buildTemplateGrid() {
+  const grid = document.getElementById('tplGrid');
+  grid.innerHTML = '';
+
+  for (const [id, tpl] of Object.entries(TEMPLATES)) {
+    const card = document.createElement('div');
+    card.className = 'tpl-card';
+    card.dataset.id = id;
+
+    let previewInner = '';
+    if (tpl.previewClass === 'preview-classic') {
+      previewInner = '';  // ::after handles icon
+    } else if (tpl.previewClass === 'preview-gold') {
+      previewInner = `
+        <div class="corner tl"></div><div class="corner tr"></div>
+        <div class="corner bl"></div><div class="corner br"></div>`;
+    } else if (tpl.previewClass === 'preview-strip') {
+      previewInner = `
+        <div class="frame">1</div><div class="frame">2</div>
+        <div class="frame">3</div><div class="frame">4</div>`;
+    } else if (tpl.previewClass === 'preview-party') {
+      previewInner = `
+        <div class="frame">1</div><div class="frame">2</div>
+        <div class="frame">3</div><div class="frame">4</div>`;
+    }
+
+    card.innerHTML = `
+      <div class="preview ${tpl.previewClass}">${previewInner}</div>
+      <div class="tpl-name">${tpl.label}</div>
+      <div class="tpl-shots">${tpl.shots === 1 ? '1 photo' : tpl.shots + ' photos'}</div>`;
+
+    card.addEventListener('click', () => selectTemplate(id));
+    grid.appendChild(card);
+  }
+}
+
+function selectTemplate(id) {
+  selectedId = id;
+  document.querySelectorAll('.tpl-card').forEach(c =>
+    c.classList.toggle('selected', c.dataset.id === id));
+  const btn = document.getElementById('btnNext');
+  btn.style.opacity = '1';
+  btn.style.pointerEvents = 'auto';
+}
+
+// ══════════════════════════════════════════════════════════════
+//  SCREEN 3 — DIRECTIONS (updates label from selected template)
+// ══════════════════════════════════════════════════════════════
+
+// Override go() for screen 3 to update the label
+const _go = go;
+go = function(n) {
+  if (n === 3 && selectedId) {
+    const tpl = TEMPLATES[selectedId];
+    document.getElementById('dirLabel').textContent =
+      `${tpl.label} · ${tpl.shots === 1 ? '1 shot' : tpl.shots + ' shots'}`;
+  }
+  _go(n);
+};
+
+// ══════════════════════════════════════════════════════════════
+//  SCREEN 4 — SHOOTING
+// ══════════════════════════════════════════════════════════════
+
+function startShooting() {
+  const tpl = TEMPLATES[selectedId];
+  currentShot = 0;
+  counting = false;
+
+  // Request session from API (mock: just proceed)
+  if (MOCK) {
+    sessionToken = 'mock-' + Date.now();
+  } else {
+    // fetch('/api/session', { method:'POST', body: JSON.stringify({template:selectedId}) })
+    //   .then(r => r.json()).then(d => { sessionToken = d.token; });
+  }
+
+  document.getElementById('shootInfo').textContent =
+    `${tpl.label} · Shot 1 of ${tpl.shots}`;
+  buildPips(tpl.shots);
+  document.getElementById('cNum').textContent = '—';
+  document.getElementById('cSub').textContent = 'Tap the button when ready';
+  document.getElementById('shutterBtn').classList.remove('off');
+  go(4);
+}
+
+function buildPips(total) {
+  const el = document.getElementById('pips');
+  el.innerHTML = '';
+  for (let i = 0; i < total; i++) {
+    const pip = document.createElement('div');
+    pip.className = 'pip' + (i < currentShot ? ' done' : i === currentShot ? ' active' : '');
+    el.appendChild(pip);
+  }
+}
+
+function triggerShot() {
+  if (counting || document.getElementById('shutterBtn').classList.contains('off')) return;
+  counting = true;
+
+  const tpl  = TEMPLATES[selectedId];
+  const btn  = document.getElementById('shutterBtn');
+  const num  = document.getElementById('cNum');
+  const sub  = document.getElementById('cSub');
+
+  btn.classList.add('off');
+  sub.textContent = 'Smile! 😁';
+  let c = 3;
+  num.textContent = c;
+
+  const tick = setInterval(() => {
+    c--;
+    if (c > 0) {
+      num.textContent = c;
+      num.classList.add('flash');
+      setTimeout(() => num.classList.remove('flash'), 140);
+    } else {
+      clearInterval(tick);
+      num.classList.add('snap');
+      num.textContent = '✦';
+      setTimeout(() => num.classList.remove('snap'), 200);
+
+      // Fire the camera
+      if (!MOCK) {
+        fetch('/api/trigger', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ token: sessionToken, shot: currentShot })
+        });
+      }
+
+      setTimeout(() => {
+        currentShot++;
+        counting = false;
+
+        if (currentShot >= tpl.shots) {
+          // All shots done — go to review
+          setTimeout(() => { buildReview(); go(5); }, 600);
+        } else {
+          buildPips(tpl.shots);
+          document.getElementById('shootInfo').textContent =
+            `${tpl.label} · Shot ${currentShot + 1} of ${tpl.shots}`;
+          num.textContent = '—';
+          sub.textContent = `Shot ${currentShot + 1} of ${tpl.shots} — tap when ready`;
+          btn.classList.remove('off');
+        }
+      }, 500);
+    }
+  }, 1000);
+}
+
+// ══════════════════════════════════════════════════════════════
+//  SCREEN 5 — REVIEW
+// ══════════════════════════════════════════════════════════════
+
+function buildReview() {
+  const tpl = TEMPLATES[selectedId];
+  const area = document.getElementById('reviewPreview');
+
+  if (tpl.previewType === 'single') {
+    area.innerHTML = `<div class="review-single">📷</div>`;
+  } else if (tpl.previewType === 'strip') {
+    area.innerHTML = `<div class="review-strip">
+      <div class="review-cell">📷</div><div class="review-cell">📷</div>
+      <div class="review-cell">📷</div><div class="review-cell">📷</div>
+    </div>`;
+  } else {
+    area.innerHTML = `<div class="review-grid">
+      <div class="review-cell">📷</div><div class="review-cell">📷</div>
+      <div class="review-cell">📷</div><div class="review-cell">📷</div>
+    </div>`;
+  }
+
+  document.getElementById('reviewMeta').textContent =
+    `${EVENT.name} · ${tpl.label} · just now`;
+  document.getElementById('printDesc').textContent = tpl.printDesc;
+  document.getElementById('dlDesc').textContent =
+    `${tpl.shots === 1 ? 'Single portrait' : '4-shot ' + tpl.previewType} · saves to camera roll`;
+
+  // In real mode, fetch the composited image:
+  // fetch('/api/latest').then(r => r.json()).then(d => {
+  //   area.innerHTML = `<img src="${d.url}" style="width:100%;height:100%;object-fit:cover;border-radius:10px;">`;
+  // });
+}
+
+function doPrint() {
+  if (MOCK) {
+    document.getElementById('doneTitle').textContent = 'Printing!';
+    document.getElementById('doneSub').textContent =
+      'Your photo is on its way. Grab it from the printer in about 30 seconds.';
+    go(6);
+  } else {
+    fetch('/api/print', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ token: sessionToken })
+    }).then(() => {
+      document.getElementById('doneTitle').textContent = 'Printing!';
+      document.getElementById('doneSub').textContent =
+        'Your photo is on its way. Grab it from the printer in about 30 seconds.';
+      go(6);
+    });
+  }
+}
+
+function doDownload() {
+  if (MOCK) {
+    document.getElementById('doneTitle').textContent = 'Saved!';
+    document.getElementById('doneSub').textContent =
+      'Your photo has been saved. Check your downloads folder.';
+    go(6);
+  } else {
+    // Trigger browser download of the composited image
+    fetch('/api/latest').then(r => r.json()).then(d => {
+      const a = document.createElement('a');
+      a.href = d.url;
+      a.download = `photobooth_${Date.now()}.jpg`;
+      a.click();
+      fetch('/api/download', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ token: sessionToken })
+      });
+      document.getElementById('doneTitle').textContent = 'Saved!';
+      document.getElementById('doneSub').textContent =
+        'Your photo has been saved. Check your downloads folder.';
+      go(6);
+    });
+  }
+}
+
+// ── Init ──
+window.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('welcomeTitle').textContent = EVENT.name;
+  buildTemplateGrid();
+});
+</script>
+</body>
+</html>

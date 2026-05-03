@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>PhotoBooth — Gallery</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+:root {
+  --bg:     #0C0C0C;
+  --mid:    #181818;
+  --card:   #1E1E1E;
+  --border: #2C2C2C;
+  --white:  #F0EDE8;
+  --muted:  #555;
+  --dim:    #888;
+  --yellow: #F5C842;
+  --red:    #E8412A;
+  --green:  #3DD68C;
+  --display: 'Bebas Neue', sans-serif;
+  --body:    'DM Sans', sans-serif;
+}
+
+body {
+  background: var(--bg);
+  color: var(--white);
+  font-family: var(--body);
+  min-height: 100dvh;
+}
+
+/* grain */
+body::after {
+  content:''; position:fixed; inset:0; z-index:50; pointer-events:none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+  opacity: 0.35;
+}
+
+/* ── HEADER ── */
+.gallery-header {
+  padding: 24px 20px 16px;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 40;
+}
+.gallery-header .eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.gallery-header .title {
+  font-family: var(--display);
+  font-size: 36px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+.gallery-header .count {
+  font-size: 12px;
+  color: var(--dim);
+  margin-top: 4px;
+}
+
+/* ── FILTER BAR ── */
+.filter-bar {
+  display: flex;
+  gap: 6px;
+  padding: 12px 20px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid rgba(44,44,44,0.5);
+}
+.filter-bar::-webkit-scrollbar { display:none; }
+.filter-chip {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.filter-chip:active { transform:scale(0.96); }
+.filter-chip.active {
+  background: var(--yellow);
+  color: var(--bg);
+  border-color: var(--yellow);
+  font-weight: 600;
+}
+
+/* ── GRID ── */
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3px;
+  padding: 3px;
+}
+.gallery-item {
+  aspect-ratio: 1;
+  background: var(--card);
+  position: relative;
+  cursor: pointer;
+  overflow: hidden;
+  transition: opacity 0.15s;
+}
+.gallery-item:active { opacity: 0.8; }
+
+/* Mock photo placeholders — coloured blocks with template icon */
+.gallery-item .mock-photo {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 24px;
+}
+.gallery-item .mock-label {
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(240,237,232,0.4);
+}
+
+/* type badge */
+.gallery-item .type-badge {
+  position: absolute;
+  bottom: 5px;
+  right: 5px;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: rgba(0,0,0,0.55);
+  color: rgba(240,237,232,0.7);
+}
+
+/* ── EMPTY STATE ── */
+.empty-state {
+  text-align: center;
+  padding: 80px 24px;
+}
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.4;
+}
+.empty-text {
+  font-size: 15px;
+  color: var(--dim);
+  line-height: 1.5;
+}
+
+/* ── LIGHTBOX ── */
+.lightbox {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0,0,0,0.88);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fadeIn 0.2s ease;
+}
+.lightbox.open { display: flex; }
+@keyframes fadeIn { from{opacity:0} to{opacity:1} }
+
+.lb-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.1);
+  border: none;
+  color: var(--white);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lb-image {
+  width: 100%;
+  max-width: 400px;
+  aspect-ratio: 3/2;
+  background: var(--card);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+  overflow: hidden;
+  position: relative;
+}
+.lb-image .mock-photo {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 48px;
+}
+
+.lb-meta {
+  text-align: center;
+  margin-bottom: 20px;
+}
+.lb-template {
+  font-family: var(--display);
+  font-size: 24px;
+  letter-spacing: 0.02em;
+}
+.lb-time {
+  font-size: 12px;
+  color: var(--dim);
+  margin-top: 2px;
+}
+
+.lb-actions {
+  display: flex;
+  gap: 10px;
+}
+.lb-btn {
+  padding: 12px 28px;
+  border-radius: 100px;
+  font-family: var(--body);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: transform 0.1s;
+}
+.lb-btn:active { transform:scale(0.96); }
+.lb-btn.primary {
+  background: var(--yellow);
+  color: var(--bg);
+}
+.lb-btn.ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--white);
+}
+
+/* ── NAV ── */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  display: flex;
+  z-index: 60;
+}
+.nav-item {
+  flex: 1;
+  padding: 10px 0 12px;
+  text-align: center;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-decoration: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+.nav-item.active { color: var(--yellow); }
+.nav-icon { font-size: 18px; display: block; margin-bottom: 2px; }
+
+/* spacing for bottom nav */
+.gallery-grid { padding-bottom: 72px; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="gallery-header">
+  <div class="eyebrow" id="eventLabel">Sarah's 30th</div>
+  <div class="title">Gallery</div>
+  <div class="count" id="photoCount">12 photos</div>
+</div>
+
+<!-- FILTERS -->
+<div class="filter-bar">
+  <button class="filter-chip active" data-filter="all" onclick="setFilter('all')">All</button>
+  <button class="filter-chip" data-filter="single" onclick="setFilter('single')">Singles</button>
+  <button class="filter-chip" data-filter="strip" onclick="setFilter('strip')">Film Strips</button>
+  <button class="filter-chip" data-filter="grid" onclick="setFilter('grid')">Party Grids</button>
+</div>
+
+<!-- GRID -->
+<div class="gallery-grid" id="grid"></div>
+
+<!-- EMPTY STATE (hidden by default) -->
+<div class="empty-state" id="emptyState" style="display:none;">
+  <div class="empty-icon">📷</div>
+  <div class="empty-text">No photos yet — the booth is just getting warmed up!</div>
+</div>
+
+<!-- LIGHTBOX -->
+<div class="lightbox" id="lightbox">
+  <button class="lb-close" onclick="closeLightbox()">✕</button>
+  <div class="lb-image" id="lbImage"></div>
+  <div class="lb-meta">
+    <div class="lb-template" id="lbTemplate">Classic Frame</div>
+    <div class="lb-time" id="lbTime">2:34 PM</div>
+  </div>
+  <div class="lb-actions">
+    <button class="lb-btn primary" onclick="downloadPhoto()">📲 Save</button>
+    <button class="lb-btn ghost" onclick="closeLightbox()">Close</button>
+  </div>
+</div>
+
+<!-- BOTTOM NAV -->
+<nav class="bottom-nav">
+  <button class="nav-item" onclick="navigateTo('booth')">
+    <span class="nav-icon">📸</span>Booth
+  </button>
+  <button class="nav-item active">
+    <span class="nav-icon">🖼</span>Gallery
+  </button>
+</nav>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+//  MOCK DATA — simulates /api/photos response.
+//  In real mode, fetch('/api/photos') on load + poll.
+// ══════════════════════════════════════════════════════════════
+
+const MOCK = true;
+
+const EVENT_NAME = "Sarah's 30th";
+
+// Hue palette for mock photo placeholders
+const HUES = [340, 25, 190, 260, 150, 35, 290, 10, 200, 170, 45, 310];
+
+const MOCK_PHOTOS = [
+  { id:1,  template:'Classic Frame',  type:'single', time:'7:12 PM', file:'photo_001.jpg' },
+  { id:2,  template:'Film Strip',     type:'strip',  time:'7:14 PM', file:'photo_002.jpg' },
+  { id:3,  template:'Gold Corners',   type:'single', time:'7:18 PM', file:'photo_003.jpg' },
+  { id:4,  template:'Party Grid',     type:'grid',   time:'7:21 PM', file:'photo_004.jpg' },
+  { id:5,  template:'Film Strip',     type:'strip',  time:'7:25 PM', file:'photo_005.jpg' },
+  { id:6,  template:'Classic Frame',  type:'single', time:'7:28 PM', file:'photo_006.jpg' },
+  { id:7,  template:'Party Grid',     type:'grid',   time:'7:32 PM', file:'photo_007.jpg' },
+  { id:8,  template:'Gold Corners',   type:'single', time:'7:35 PM', file:'photo_008.jpg' },
+  { id:9,  template:'Film Strip',     type:'strip',  time:'7:38 PM', file:'photo_009.jpg' },
+  { id:10, template:'Classic Frame',  type:'single', time:'7:41 PM', file:'photo_010.jpg' },
+  { id:11, template:'Party Grid',     type:'grid',   time:'7:44 PM', file:'photo_011.jpg' },
+  { id:12, template:'Film Strip',     type:'strip',  time:'7:48 PM', file:'photo_012.jpg' },
+];
+
+const TYPE_ICONS = {
+  single: '📷',
+  strip:  '🎞',
+  grid:   '⊞'
+};
+
+// ── State ──
+let photos = [];
+let activeFilter = 'all';
+let selectedPhoto = null;
+
+// ══════════════════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════════════════
+
+window.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('eventLabel').textContent = EVENT_NAME;
+
+  if (MOCK) {
+    photos = MOCK_PHOTOS;
+    renderGrid();
+  } else {
+    fetchPhotos();
+    // Poll for new photos every 5 seconds
+    setInterval(fetchPhotos, 5000);
+  }
+});
+
+function fetchPhotos() {
+  fetch('/api/photos')
+    .then(r => r.json())
+    .then(data => {
+      photos = data.photos || data;
+      renderGrid();
+    });
+}
+
+// ══════════════════════════════════════════════════════════════
+//  RENDER
+// ══════════════════════════════════════════════════════════════
+
+function renderGrid() {
+  const filtered = activeFilter === 'all'
+    ? photos
+    : photos.filter(p => p.type === activeFilter);
+
+  document.getElementById('photoCount').textContent =
+    `${filtered.length} photo${filtered.length !== 1 ? 's' : ''}`;
+
+  const grid = document.getElementById('grid');
+  const empty = document.getElementById('emptyState');
+
+  if (filtered.length === 0) {
+    grid.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+
+  empty.style.display = 'none';
+
+  // Render newest first
+  grid.innerHTML = filtered.slice().reverse().map((p, i) => {
+    const hue = HUES[(p.id - 1) % HUES.length];
+    const icon = TYPE_ICONS[p.type] || '📷';
+    const typeLabel = p.type === 'single' ? '1×' :
+                      p.type === 'strip'  ? '4×' : '2×2';
+
+    return `
+      <div class="gallery-item" onclick="openLightbox(${p.id})"
+           style="animation: fadeUp 0.3s ${i * 0.03}s both ease;">
+        <div class="mock-photo" style="background:hsl(${hue},25%,16%);">
+          <span>${icon}</span>
+          <span class="mock-label">${p.time}</span>
+        </div>
+        <div class="type-badge">${typeLabel}</div>
+      </div>`;
+  }).join('');
+}
+
+// ── Filters ──
+function setFilter(f) {
+  activeFilter = f;
+  document.querySelectorAll('.filter-chip').forEach(c =>
+    c.classList.toggle('active', c.dataset.filter === f));
+  renderGrid();
+}
+
+// ══════════════════════════════════════════════════════════════
+//  LIGHTBOX
+// ══════════════════════════════════════════════════════════════
+
+function openLightbox(id) {
+  selectedPhoto = photos.find(p => p.id === id);
+  if (!selectedPhoto) return;
+
+  const hue = HUES[(id - 1) % HUES.length];
+  const icon = TYPE_ICONS[selectedPhoto.type] || '📷';
+
+  document.getElementById('lbImage').innerHTML =
+    `<div class="mock-photo" style="background:hsl(${hue},25%,16%);border-radius:10px;">
+      <span>${icon}</span>
+    </div>`;
+
+  // In real mode, show actual image:
+  // document.getElementById('lbImage').innerHTML =
+  //   `<img src="/photos/${selectedPhoto.file}" style="width:100%;height:100%;object-fit:cover;border-radius:10px;">`;
+
+  document.getElementById('lbTemplate').textContent = selectedPhoto.template;
+  document.getElementById('lbTime').textContent =
+    `${EVENT_NAME} · ${selectedPhoto.time}`;
+
+  document.getElementById('lightbox').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.body.style.overflow = '';
+  selectedPhoto = null;
+}
+
+function downloadPhoto() {
+  if (!selectedPhoto) return;
+
+  if (MOCK) {
+    alert(`Mock mode — would download ${selectedPhoto.file}`);
+    closeLightbox();
+  } else {
+    const a = document.createElement('a');
+    a.href = `/photos/${selectedPhoto.file}`;
+    a.download = selectedPhoto.file;
+    a.click();
+    closeLightbox();
+  }
+}
+
+// Close lightbox on backdrop tap
+document.getElementById('lightbox').addEventListener('click', (e) => {
+  if (e.target.id === 'lightbox') closeLightbox();
+});
+
+// Close on Escape
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeLightbox();
+});
+// ── Navigation (works both as local file and served by Flask) ──
+function navigateTo(page) {
+  if (window.location.protocol === 'file:') {
+    const dir = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/') + 1);
+    const names = { booth:'booth.html', gallery:'gallery.html', admin:'admin.html', display:'display.html' };
+    window.location.href = 'file://' + dir + (names[page] || page);
+  } else {
+    const routes = { booth:'/', gallery:'/gallery', admin:'/admin', display:'/display' };
+    window.location.href = routes[page] || '/' + page;
+  }
+}
+</script>
+
+<style>
+@keyframes fadeUp {
+  from { opacity:0; transform:translateY(8px); }
+  to   { opacity:1; transform:none; }
+}
+</style>
+</body>
+</html>
