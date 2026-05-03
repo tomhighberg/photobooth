@@ -24,7 +24,7 @@ from composite import build_single, build_strip
 #  CONFIG
 # ══════════════════════════════════════════════════════════════
 
-MOCK = True                       # Flip to False on the Pi
+MOCK = False                       # Flip to False on the Pi
 
 BASE_DIR   = Path(__file__).parent
 PHOTOS_DIR = BASE_DIR / 'photos'
