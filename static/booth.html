@@ -423,27 +423,12 @@ function buildTemplateGrid() {
     card.className = 'tpl-card';
     card.dataset.id = id;
 
-    let previewInner = '';
-    if (tpl.previewClass === 'preview-classic') {
-      previewInner = '';  // ::after handles icon
-    } else if (tpl.previewClass === 'preview-gold') {
-      previewInner = `
-        <div class="corner tl"></div><div class="corner tr"></div>
-        <div class="corner bl"></div><div class="corner br"></div>`;
-    } else if (tpl.previewClass === 'preview-strip') {
-      previewInner = `
-        <div class="frame">1</div><div class="frame">2</div>
-        <div class="frame">3</div><div class="frame">4</div>`;
-    } else if (tpl.previewClass === 'preview-party') {
-      previewInner = `
-        <div class="frame">1</div><div class="frame">2</div>
-        <div class="frame">3</div><div class="frame">4</div>`;
-    }
-
-    card.innerHTML = `
-      <div class="preview ${tpl.previewClass}">${previewInner}</div>
-      <div class="tpl-name">${tpl.label}</div>
-      <div class="tpl-shots">${tpl.shots === 1 ? '1 photo' : tpl.shots + ' photos'}</div>`;
+card.innerHTML = `
+  <div class="preview">
+    <img src="/${tpl.overlay}" style="width:100%;height:100%;object-fit:cover;border-radius:6px;">
+  </div>
+  <div class="tpl-name">${tpl.label}</div>
+  <div class="tpl-shots">${tpl.shots === 1 ? '1 photo' : tpl.shots + ' photos'}</div>`;
 
     card.addEventListener('click', () => selectTemplate(id));
     grid.appendChild(card);
