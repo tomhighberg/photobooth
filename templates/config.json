@@ -1,0 +1,21 @@
+{
+  "event_name": "Disco Duck Presents",
+  "event_emoji": "🎉",
+  "active": true,
+  "templates": {
+    "single-classic": {
+      "label": "Disco Duck Single Pic",
+      "shots": 1,
+      "overlay": "overlays/disco_duck_presents.png",
+      "composite": "build_single",
+      "print_desc": "Full-frame 4×6 · dark border"
+    },
+    "strip-party": {
+      "label": "Party Grid",
+      "shots": 4,
+      "overlay": "overlays/overlay_partygrid.png",
+      "composite": "build_strip",
+      "print_desc": "4-shot 2×2 grid · festive overlay"
+    }
+  }
+}

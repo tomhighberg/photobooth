@@ -300,6 +300,7 @@ body::after {
     <button class="pill-btn" onclick="doPrint()">🖨 Print It</button>
     <div class="action-desc" id="dlDesc">Single portrait · saves to camera roll</div>
     <button class="pill-btn ghost" onclick="doDownload()">📲 Download Only</button>
+    <button class="pill-btn ghost" onclick="doSkip()" style="opacity:0.6; font-size:13px;">No thanks — done</button>
   </div>
 </div>
 
@@ -602,6 +603,14 @@ function doDownload() {
       go(6);
     });
   }
+}
+
+function doSkip() {
+  fetch('/api/session/cancel', { method: 'POST' });
+  document.getElementById('doneTitle').textContent = 'Thanks!';
+  document.getElementById('doneSub').textContent = 
+    'Hope you had fun! Step aside for the next guest.';
+  go(6);
 }
 
 // ── Init ──

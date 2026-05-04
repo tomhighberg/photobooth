@@ -359,6 +359,11 @@ def page_display():
 def serve_photo(filename):
     return send_from_directory(PHOTOS_DIR, filename)
 
+# Serve overlays directory
+@app.route('/overlays/<path:filename>')
+def serve_overlay(filename):
+    return send_from_directory(OVERLAYS_DIR, filename)
+
 # Pull templates from json file
 @app.route('/api/config')
 def api_config():
