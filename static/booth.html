@@ -570,11 +570,28 @@ async function triggerShot() {
 
       // Fire the camera
       if (!MOCK) {
-        fetch('/api/trigger', {
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ token: sessionToken, shot: currentShot })
-        });
+fetch('/api/trigger', {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify({ token: sessionToken, shot: currentShot })
+})
+.then(r => r.json())
+.then(data => {
+  currentShot++;
+  counting = false;
+
+  if (data.done) {
+    buildReview();
+    go(5);
+  } else {
+    buildPips(tpl.shots);
+    document.getElementById('shootInfo').textContent =
+      `${tpl.label} · Shot ${currentShot + 1} of ${tpl.shots}`;
+    num.textContent = '—';
+    sub.textContent = `Shot ${currentShot + 1} of ${tpl.shots} — tap when ready`;
+    btn.classList.remove('off');
+  }
+});
       }
 
       setTimeout(() => {
