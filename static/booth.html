@@ -625,10 +625,9 @@ function buildReview() {
   document.getElementById('dlDesc').textContent =
     `${tpl.shots === 1 ? 'Single portrait' : '4-shot ' + tpl.previewType} · saves to camera roll`;
 
-  // In real mode, fetch the composited image:
-  // fetch('/api/latest').then(r => r.json()).then(d => {
-  //   area.innerHTML = `<img src="${d.url}" style="width:100%;height:100%;object-fit:cover;border-radius:10px;">`;
-  // });
+fetch('/api/latest').then(r => r.json()).then(d => {
+  area.innerHTML = `<img src="${d.url}" style="width:100%;height:100%;object-fit:cover;border-radius:10px;">`;
+});
 }
 
 function doPrint() {
