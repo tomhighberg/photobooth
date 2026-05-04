@@ -1,28 +1,14 @@
 {
-  "event_name": "Sarah's 30th",
+  "event_name": "Disco Duck Presents",
   "event_emoji": "🎉",
   "active": true,
   "templates": {
     "single-classic": {
-      "label": "Classic Frame",
+      "label": "Disco Duck Single Pic",
       "shots": 1,
-      "overlay": "overlays/overlay_classic.png",
+      "overlay": "overlays/disco duck presents.png",
       "composite": "build_single",
       "print_desc": "Full-frame 4×6 · dark border"
-    },
-    "single-gold": {
-      "label": "Gold Corners",
-      "shots": 1,
-      "overlay": "overlays/overlay_goldcorners.png",
-      "composite": "build_single",
-      "print_desc": "Full-frame 4×6 · gold corner accents"
-    },
-    "strip-film": {
-      "label": "Film Strip",
-      "shots": 4,
-      "overlay": "overlays/overlay_filmstrip.png",
-      "composite": "build_strip",
-      "print_desc": "4-shot strip · retro film surround"
     },
     "strip-party": {
       "label": "Party Grid",

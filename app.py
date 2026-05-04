@@ -359,6 +359,14 @@ def page_display():
 def serve_photo(filename):
     return send_from_directory(PHOTOS_DIR, filename)
 
+# Pull templates from json file
+@app.route('/api/config')
+def api_config():
+    return jsonify({
+        'event_name': config['event_name'],
+        'templates': config['templates']
+    })
+
 
 # ── API: Status ──
 
