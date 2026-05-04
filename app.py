@@ -24,7 +24,8 @@ from composite import build_single, build_strip
 #  CONFIG
 # ══════════════════════════════════════════════════════════════
 
-MOCK = True                       # Flip to False on the Pi
+MOCK = False                       # Flip to False on the Pi
+USE_WEBCAM = True   # Set False when D3400 is connected
 
 BASE_DIR   = Path(__file__).parent
 PHOTOS_DIR = BASE_DIR / 'photos'
@@ -122,6 +123,15 @@ def camera_capture(output_path: str) -> bool:
         img.save(output_path, 'JPEG', quality=92)
         print(f"[MOCK] Camera captured → {output_path}")
         return True
+
+    if USE_WEBCAM:
+        import subprocess
+        result = subprocess.run(
+            ['fswebcam', '--no-banner', '-r', '1280x720', output_path],
+            capture_output=True
+        )
+        print(f"[WEBCAM] Captured → {output_path}")
+        return result.returncode == 0
 
     try:
         camera = gp.Camera()
