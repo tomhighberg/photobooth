@@ -505,7 +505,7 @@ go = function(n) {
 //  SCREEN 4 — SHOOTING
 // ══════════════════════════════════════════════════════════════
 
-function startShooting() {
+async function startShooting() {
   const tpl = TEMPLATES[selectedId];
   currentShot = 0;
   counting = false;
@@ -514,9 +514,14 @@ function startShooting() {
   if (MOCK) {
     sessionToken = 'mock-' + Date.now();
   } else {
-    // fetch('/api/session', { method:'POST', body: JSON.stringify({template:selectedId}) })
-    //   .then(r => r.json()).then(d => { sessionToken = d.token; });
-  }
+    const res = await fetch('/api/session', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({template: selectedId})
+    });
+    const data = await res.json();
+    sessionToken = data.token;
+}
 
   document.getElementById('shootInfo').textContent =
     `${tpl.label} · Shot 1 of ${tpl.shots}`;
@@ -537,7 +542,7 @@ function buildPips(total) {
   }
 }
 
-function triggerShot() {
+async function triggerShot() {
   if (counting || document.getElementById('shutterBtn').classList.contains('off')) return;
   counting = true;
 
