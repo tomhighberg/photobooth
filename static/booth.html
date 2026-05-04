@@ -426,6 +426,9 @@ function go(n) {
 }
 
 function reset() {
+  if (sessionToken) {
+    fetch('/api/session/cancel', { method: 'POST' });
+  }
   selectedId = null;
   currentShot = 0;
   counting = false;
@@ -577,7 +580,7 @@ fetch('/api/trigger', {
 })
 .then(r => r.json())
 .then(data => {
-  currentShot++;
+  currentShot = data.shot;  // server says which shot just completed
   counting = false;
 
   if (data.done) {
@@ -586,9 +589,9 @@ fetch('/api/trigger', {
   } else {
     buildPips(tpl.shots);
     document.getElementById('shootInfo').textContent =
-      `${tpl.label} · Shot ${currentShot + 1} of ${tpl.shots}`;
+      `${tpl.label} · Shot ${data.shot + 1} of ${data.total}`;
     num.textContent = '—';
-    sub.textContent = `Shot ${currentShot + 1} of ${tpl.shots} — tap when ready`;
+    sub.textContent = `Shot ${data.shot + 1} of ${data.total} — tap when ready`;
     btn.classList.remove('off');
   }
 });
