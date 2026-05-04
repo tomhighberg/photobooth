@@ -127,54 +127,7 @@ body::after {
   font-size:11px; color:var(--muted);
 }
 
-/* Preview decorations — CSS stand-ins for real overlay thumbnails */
-.preview-classic {
-  border:3px solid #333; border-radius:4px;
-}
-.preview-classic::after {
-  content:'📷'; font-size:28px;
-}
-.preview-gold .corner {
-  position:absolute; width:18px; height:18px;
-  border:2px solid var(--yellow);
-}
-.preview-gold .corner.tl { top:6px; left:6px; border-right:none; border-bottom:none; }
-.preview-gold .corner.tr { top:6px; right:6px; border-left:none; border-bottom:none; }
-.preview-gold .corner.bl { bottom:6px; left:6px; border-right:none; border-top:none; }
-.preview-gold .corner.br { bottom:6px; right:6px; border-left:none; border-top:none; }
-.preview-gold::after { content:'📷'; font-size:28px; }
 
-.preview-strip {
-  display:grid !important; grid-template-rows:repeat(4,1fr); gap:3px; padding:5px;
-}
-.preview-strip .frame {
-  background:var(--border); border-radius:2px; display:flex;
-  align-items:center; justify-content:center; font-size:10px; color:var(--muted);
-}
-/* sprocket holes */
-.preview-strip::before, .preview-strip::after {
-  content:''; position:absolute; top:0; bottom:0; width:8px;
-  background: repeating-linear-gradient(
-    to bottom, transparent 0px, transparent 4px, var(--bg) 4px, var(--bg) 8px,
-    transparent 8px, transparent 14px
-  );
-}
-.preview-strip::before { left:0; }
-.preview-strip::after  { right:0; }
-
-.preview-party {
-  display:grid !important; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr;
-  gap:3px; padding:6px;
-}
-.preview-party .frame {
-  background:var(--border); border-radius:3px; display:flex;
-  align-items:center; justify-content:center; font-size:10px; color:var(--muted);
-}
-.preview-party::after {
-  content:''; position:absolute; inset:0;
-  background: repeating-linear-gradient(45deg, transparent, transparent 8px, rgba(245,200,66,0.06) 8px, rgba(245,200,66,0.06) 10px);
-  pointer-events:none;
-}
 
 /* ═══════════════════════════════════════
    SCREEN 3 — DIRECTIONS
