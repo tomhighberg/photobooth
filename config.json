@@ -13,7 +13,7 @@
     "strip-party": {
       "label": "Party Grid",
       "shots": 4,
-      "overlay": "overlays/disco_duck_presents.png",
+      "overlay": "overlays/disco_duck_quad.png",
       "composite": "build_strip",
       "print_desc": "4-shot 2×2 grid · festive overlay"
     }
