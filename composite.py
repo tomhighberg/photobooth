@@ -102,6 +102,7 @@ def build_strip(raw_paths: list[str], overlay_path: str | None, output_path: str
         output_path:  Where to save the final composited JPEG.
     """
     # allow film strip to be portrait orientation instead of landscape
+    name = Path(overlay_path).stem.lower()
     if 'strip' in name or 'film' in name:
         zones = STRIP_ZONES
         canvas_size = (1200, 1800)
@@ -114,7 +115,6 @@ def build_strip(raw_paths: list[str], overlay_path: str | None, output_path: str
     # Determine layout from overlay filename
     zones = GRID_ZONES  # default
     if overlay_path:
-        name = Path(overlay_path).stem.lower()
         if 'strip' in name or 'film' in name:
             zones = STRIP_ZONES
 
