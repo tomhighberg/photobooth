@@ -2,6 +2,20 @@
   "event_name": "Disco Duck Presents",
   "event_emoji": "🎉",
   "active": true,
+  "camera_model": "webcam",
+  "camera_settings": {
+    "d3400": {
+      "capturetarget": "Internal RAM",
+      "imagequality":  "JPEG Fine",
+      "imagesize":     "Large"
+    },
+    "lumix_s5ii": {
+      "capturetarget": "Internal RAM",
+      "imagequality":  "Fine",
+      "imagesize":     "Large"
+    },
+    "webcam": {}
+  },
   "templates": {
     "single-classic": {
       "label": "Disco Duck Single Pic",

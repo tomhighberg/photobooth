@@ -318,7 +318,6 @@ body::after {
 //  CONFIG — mirrors config.json on the Pi
 // ══════════════════════════════════════════════════════════════
 
-const MOCK = false;
 
 let TEMPLATES = {};
 let EVENT = {};
@@ -422,18 +421,13 @@ async function startShooting() {
   currentShot = 0;
   counting = false;
 
-  // Request session from API (mock: just proceed)
-  if (MOCK) {
-    sessionToken = 'mock-' + Date.now();
-  } else {
-    const res = await fetch('/api/session', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({template: selectedId})
-    });
-    const data = await res.json();
-    sessionToken = data.token;
-}
+  const res = await fetch('/api/session', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({template: selectedId})
+  });
+  const data = await res.json();
+  sessionToken = data.token;
 
   document.getElementById('shootInfo').textContent =
     `${tpl.label} · Shot 1 of ${tpl.shots}`;
@@ -454,76 +448,64 @@ function buildPips(total) {
   }
 }
 
+function runCountdown(num) {
+  return new Promise(resolve => {
+    let c = 3;
+    num.textContent = c;
+    const tick = setInterval(() => {
+      c--;
+      if (c > 0) {
+        num.textContent = c;
+        num.classList.add('flash');
+        setTimeout(() => num.classList.remove('flash'), 140);
+      } else {
+        clearInterval(tick);
+        num.classList.add('snap');
+        num.textContent = '✦';
+        setTimeout(() => { num.classList.remove('snap'); resolve(); }, 400);
+      }
+    }, 1000);
+  });
+}
+
 async function triggerShot() {
   if (counting || document.getElementById('shutterBtn').classList.contains('off')) return;
   counting = true;
 
-  const tpl  = TEMPLATES[selectedId];
-  const btn  = document.getElementById('shutterBtn');
-  const num  = document.getElementById('cNum');
-  const sub  = document.getElementById('cSub');
+  const tpl = TEMPLATES[selectedId];
+  const btn = document.getElementById('shutterBtn');
+  const num = document.getElementById('cNum');
+  const sub = document.getElementById('cSub');
 
   btn.classList.add('off');
-  sub.textContent = 'Smile! 😁';
-  let c = 3;
-  num.textContent = c;
 
-  const tick = setInterval(() => {
-    c--;
-    if (c > 0) {
-      num.textContent = c;
-      num.classList.add('flash');
-      setTimeout(() => num.classList.remove('flash'), 140);
-    } else {
-      clearInterval(tick);
-      num.classList.add('snap');
-      num.textContent = '✦';
-      setTimeout(() => num.classList.remove('snap'), 200);
-
-      // Fire the camera
-      if (!MOCK) {
-fetch('/api/trigger', {
-  method: 'POST',
-  headers: {'Content-Type': 'application/json'},
-  body: JSON.stringify({ token: sessionToken, shot: currentShot })
-})
-.then(r => r.json())
-.then(data => {
-  currentShot = data.shot;  // server says which shot just completed
-  counting = false;
-
-  if (data.done) {
-    buildReview();
-    go(5);
-  } else {
-    buildPips(tpl.shots);
+  for (let i = 0; i < tpl.shots; i++) {
     document.getElementById('shootInfo').textContent =
-      `${tpl.label} · Shot ${data.shot + 1} of ${data.total}`;
-    num.textContent = '—';
-    sub.textContent = `Shot ${data.shot + 1} of ${data.total} — tap when ready`;
-    btn.classList.remove('off');
-  }
-});
-      }
+      `${tpl.label} · Shot ${i + 1} of ${tpl.shots}`;
+    sub.textContent = tpl.shots > 1 ? `Shot ${i + 1} of ${tpl.shots} — smile! 😁` : 'Smile! 😁';
+    buildPips(tpl.shots);
 
-      setTimeout(() => {
-        currentShot++;
-        counting = false;
+    await runCountdown(num);
 
-        if (currentShot >= tpl.shots) {
-          // All shots done — go to review
-          setTimeout(() => { buildReview(); go(5); }, 600);
-        } else {
-          buildPips(tpl.shots);
-          document.getElementById('shootInfo').textContent =
-            `${tpl.label} · Shot ${currentShot + 1} of ${tpl.shots}`;
-          num.textContent = '—';
-          sub.textContent = `Shot ${currentShot + 1} of ${tpl.shots} — tap when ready`;
-          btn.classList.remove('off');
-        }
-      }, 500);
+    const data = await fetch('/api/trigger', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ token: sessionToken, shot: i })
+    }).then(r => r.json());
+
+    currentShot = data.shot;
+    buildPips(tpl.shots);
+
+    if (i < tpl.shots - 1) {
+      num.textContent = '—';
+      sub.textContent = 'Get ready...';
+      await new Promise(r => setTimeout(r, 900));
     }
-  }, 1000);
+  }
+
+  counting = false;
+  buildReview();
+  go(5);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -560,49 +542,34 @@ fetch('/api/latest').then(r => r.json()).then(d => {
 }
 
 function doPrint() {
-  if (MOCK) {
+  fetch('/api/print', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ token: sessionToken })
+  }).then(() => {
     document.getElementById('doneTitle').textContent = 'Printing!';
     document.getElementById('doneSub').textContent =
       'Your photo is on its way. Grab it from the printer in about 30 seconds.';
     go(6);
-  } else {
-    fetch('/api/print', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ token: sessionToken })
-    }).then(() => {
-      document.getElementById('doneTitle').textContent = 'Printing!';
-      document.getElementById('doneSub').textContent =
-        'Your photo is on its way. Grab it from the printer in about 30 seconds.';
-      go(6);
-    });
-  }
+  });
 }
 
 function doDownload() {
-  if (MOCK) {
+  fetch('/api/latest').then(r => r.json()).then(d => {
+    const a = document.createElement('a');
+    a.href = d.url;
+    a.download = `photobooth_${Date.now()}.jpg`;
+    a.click();
+    fetch('/api/download', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ token: sessionToken })
+    });
     document.getElementById('doneTitle').textContent = 'Saved!';
     document.getElementById('doneSub').textContent =
       'Your photo has been saved. Check your downloads folder.';
     go(6);
-  } else {
-    // Trigger browser download of the composited image
-    fetch('/api/latest').then(r => r.json()).then(d => {
-      const a = document.createElement('a');
-      a.href = d.url;
-      a.download = `photobooth_${Date.now()}.jpg`;
-      a.click();
-      fetch('/api/download', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ token: sessionToken })
-      });
-      document.getElementById('doneTitle').textContent = 'Saved!';
-      document.getElementById('doneSub').textContent =
-        'Your photo has been saved. Check your downloads folder.';
-      go(6);
-    });
-  }
+  });
 }
 
 function doSkip() {

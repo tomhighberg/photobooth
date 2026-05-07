@@ -3,9 +3,13 @@ PhotoBooth — app.py
 Flask application serving the booth UI, admin dashboard, gallery,
 projector display, and all API endpoints.
 
-Hardware calls (camera, printer, GPIO) are stubbed when MOCK=True
-so you can develop and test the full flow on a laptop.
-Flip MOCK=False on the Pi to activate real hardware.
+Camera model is selected via camera_model in config.json:
+  "webcam"     — USB webcam via fswebcam (for testing)
+  "d3400"      — Nikon D3400 via gphoto2
+  "lumix_s5ii" — Panasonic Lumix S5 II via gphoto2
+
+Set MOCK_PRINTER = True to log print jobs to console instead of sending
+to the physical printer (useful when the printer isn't connected).
 """
 
 import os
@@ -24,8 +28,7 @@ from composite import build_single, build_strip
 #  CONFIG
 # ══════════════════════════════════════════════════════════════
 
-MOCK = False                       # Flip to False on the Pi
-USE_WEBCAM = True   # Set False when D3400 is connected
+MOCK_PRINTER = False  # Set True to log print jobs without using the physical printer
 
 BASE_DIR   = Path(__file__).parent
 PHOTOS_DIR = BASE_DIR / 'photos'
@@ -38,126 +41,188 @@ PHOTOS_DIR.mkdir(exist_ok=True)
 OVERLAYS_DIR.mkdir(exist_ok=True)
 
 # ══════════════════════════════════════════════════════════════
-#  HARDWARE ABSTRACTION
-#  Each function has a real path and a mock path.
-#  The mock path generates placeholder images / logs to console.
+#  HARDWARE IMPORTS
+#  Each library is imported independently so a missing library
+#  only disables that subsystem, not the whole app.
 # ══════════════════════════════════════════════════════════════
 
-if not MOCK:
-    try:
-        import gphoto2 as gp
-        import cups
-        import RPi.GPIO as GPIO
-    except ImportError as e:
-        print(f"[WARN] Hardware library not available: {e}")
-        print("[WARN] Falling back to MOCK mode")
-        MOCK = True
+try:
+    import gphoto2 as gp
+    _GP_AVAILABLE = True
+except ImportError:
+    print("[WARN] gphoto2 not available — gphoto2 cameras disabled")
+    _GP_AVAILABLE = False
+
+try:
+    import cups
+    _CUPS_AVAILABLE = True
+except ImportError:
+    print("[WARN] cups not available — physical printing disabled")
+    _CUPS_AVAILABLE = False
+
+try:
+    import RPi.GPIO as GPIO
+    _GPIO_AVAILABLE = True
+except ImportError:
+    print("[WARN] RPi.GPIO not available — GPIO in console-log mode")
+    _GPIO_AVAILABLE = False
 
 # ── GPIO ──
 
-FLASH_PIN    = 17
+FLASH_PIN     = 17
 INDICATOR_PIN = 18
-SHUTDOWN_PIN = 27
+SHUTDOWN_PIN  = 27
+
+_PIN_NAMES = {FLASH_PIN: 'FLASH', INDICATOR_PIN: 'INDICATOR', SHUTDOWN_PIN: 'SHUTDOWN'}
+
+def _gpio_log(pin: int, state: str):
+    print(f"[GPIO] pin {pin} ({_PIN_NAMES.get(pin, '?')}) → {state}")
 
 def gpio_setup():
-    if MOCK:
-        print("[MOCK] GPIO setup — pins 17 (flash), 18 (indicator), 27 (shutdown)")
-        return
-    GPIO.setmode(GPIO.BCM)
-    GPIO.setup(FLASH_PIN, GPIO.OUT, initial=GPIO.LOW)
-    GPIO.setup(INDICATOR_PIN, GPIO.OUT, initial=GPIO.LOW)
-    GPIO.setup(SHUTDOWN_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+    if _GPIO_AVAILABLE:
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(FLASH_PIN, GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(INDICATOR_PIN, GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(SHUTDOWN_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        print("[GPIO] Setup complete — pins 17 (FLASH), 18 (INDICATOR), 27 (SHUTDOWN)")
+    else:
+        print("[GPIO] Console-log mode — pins 17 (FLASH), 18 (INDICATOR), 27 (SHUTDOWN)")
 
 def flash_on():
-    if MOCK:
-        print("[MOCK] Flash ON")
-        return
-    GPIO.output(FLASH_PIN, GPIO.HIGH)
+    if _GPIO_AVAILABLE:
+        GPIO.output(FLASH_PIN, GPIO.HIGH)
+    else:
+        _gpio_log(FLASH_PIN, 'ON')
 
 def flash_off():
-    if MOCK:
-        print("[MOCK] Flash OFF")
-        return
-    GPIO.output(FLASH_PIN, GPIO.LOW)
+    if _GPIO_AVAILABLE:
+        GPIO.output(FLASH_PIN, GPIO.LOW)
+    else:
+        _gpio_log(FLASH_PIN, 'OFF')
 
 def indicator_set(on: bool):
-    if MOCK:
-        print(f"[MOCK] Indicator LED {'ON' if on else 'OFF'}")
-        return
-    GPIO.output(INDICATOR_PIN, GPIO.HIGH if on else GPIO.LOW)
+    if _GPIO_AVAILABLE:
+        GPIO.output(INDICATOR_PIN, GPIO.HIGH if on else GPIO.LOW)
+    else:
+        _gpio_log(INDICATOR_PIN, 'ON' if on else 'OFF')
 
 def shutdown_monitor():
     """Background thread — polls shutdown button, triggers graceful shutdown."""
     while True:
-        if MOCK:
-            time.sleep(5)
-            continue
-        if GPIO.input(SHUTDOWN_PIN) == GPIO.LOW:
-            time.sleep(3)
+        if _GPIO_AVAILABLE:
             if GPIO.input(SHUTDOWN_PIN) == GPIO.LOW:
-                print("[HW] Shutdown button held — powering down")
-                os.system("sudo shutdown now")
-        time.sleep(0.1)
+                time.sleep(3)
+                if GPIO.input(SHUTDOWN_PIN) == GPIO.LOW:
+                    print("[GPIO] Shutdown button held — powering down")
+                    os.system("sudo shutdown now")
+            time.sleep(0.1)
+        else:
+            time.sleep(5)
 
 # ── CAMERA ──
+# CAMERA_MODEL is set after config is loaded (see below).
+# Supported values: "webcam" | "d3400" | "lumix_s5ii"
+
+_camera = None  # persistent gphoto2 handle; shared across shots in a session
+
+
+def camera_connect() -> bool:
+    """Open and configure the camera. No-op for webcam. Returns True on success."""
+    global _camera
+    if CAMERA_MODEL == 'webcam':
+        return True
+    if not _GP_AVAILABLE:
+        print(f"[ERR] gphoto2 not available — cannot connect {CAMERA_MODEL}")
+        return False
+    try:
+        _camera = gp.Camera()
+        _camera.init()
+        cam_cfg = config.get('camera_settings', {}).get(CAMERA_MODEL, {})
+        if cam_cfg:
+            _camera_configure(cam_cfg)
+        print(f"[CAM] {CAMERA_MODEL} connected")
+        return True
+    except Exception as e:
+        print(f"[ERR] Camera connect failed: {e}")
+        _camera = None
+        return False
+
+
+def _camera_configure(cfg_dict: dict):
+    """Apply gphoto2 config key/value pairs from config.json."""
+    try:
+        cfg = _camera.get_config()
+        for key, value in cfg_dict.items():
+            try:
+                widget = cfg.get_child_by_name(key)
+                widget.set_value(value)
+            except Exception as e:
+                print(f"[WARN] Camera config {key}={value} not applied: {e}")
+        _camera.set_config(cfg)
+        print(f"[CAM] Configuration applied: {cfg_dict}")
+    except Exception as e:
+        print(f"[WARN] Camera configure failed: {e}")
+
+
+def camera_disconnect():
+    """Release the gphoto2 camera handle. No-op for webcam."""
+    global _camera
+    if _camera is not None:
+        try:
+            _camera.exit()
+            print(f"[CAM] {CAMERA_MODEL} disconnected")
+        except Exception:
+            pass
+        _camera = None
+
 
 def camera_capture(output_path: str) -> bool:
-    """
-    Trigger the D3400 shutter and save the image to output_path.
-    Returns True on success.
-    """
-    if MOCK:
-        # Generate a placeholder image with Pillow
-        from PIL import Image, ImageDraw, ImageFont
-        img = Image.new('RGB', (1800, 1200), color=(30, 30, 35))
-        draw = ImageDraw.Draw(img)
-        # Draw a subtle grid and label
-        for x in range(0, 1800, 100):
-            draw.line([(x, 0), (x, 1200)], fill=(45, 45, 50), width=1)
-        for y in range(0, 1200, 100):
-            draw.line([(0, y), (1800, y)], fill=(45, 45, 50), width=1)
-        # Centre label
-        ts = datetime.now().strftime('%H:%M:%S')
-        draw.text((900, 580), f"MOCK CAPTURE {ts}", fill=(120, 120, 130), anchor='mm')
-        draw.text((900, 620), output_path.split('/')[-1], fill=(80, 80, 90), anchor='mm')
-        img.save(output_path, 'JPEG', quality=92)
-        print(f"[MOCK] Camera captured → {output_path}")
-        return True
+    """Capture one image and save to output_path. Returns True on success."""
+    if CAMERA_MODEL == 'webcam':
+        return _capture_webcam(output_path)
+    elif CAMERA_MODEL in ('d3400', 'lumix_s5ii'):
+        return _capture_gphoto2(output_path)
+    else:
+        print(f"[ERR] Unknown camera model: {CAMERA_MODEL}")
+        return False
 
-    if USE_WEBCAM:
-        import subprocess
-        result = subprocess.run(
-            ['fswebcam', '--no-banner', '-r', '1280x720', output_path],
-            capture_output=True
-        )
-        print(f"[WEBCAM] Captured → {output_path}")
-        return result.returncode == 0
 
+def _capture_webcam(output_path: str) -> bool:
+    import subprocess
+    result = subprocess.run(
+        ['fswebcam', '--no-banner', '-r', '1280x720', output_path],
+        capture_output=True
+    )
+    print(f"[WEBCAM] Captured → {output_path}")
+    return result.returncode == 0
+
+
+def _capture_gphoto2(output_path: str) -> bool:
+    global _camera
+    if _camera is None:
+        if not camera_connect():
+            return False
     try:
-        camera = gp.Camera()
-        camera.init()
-        # Trigger flash
         flash_on()
-        file_path = camera.capture(gp.GP_CAPTURE_IMAGE)
+        file_path = _camera.capture(gp.GP_CAPTURE_IMAGE)
         flash_off()
-        # Download to local path
-        camera_file = camera.file_get(
+        camera_file = _camera.file_get(
             file_path.folder, file_path.name, gp.GP_FILE_TYPE_NORMAL
         )
         camera_file.save(output_path)
-        camera.exit()
-        print(f"[HW] Camera captured → {output_path}")
+        print(f"[CAM] {CAMERA_MODEL} captured → {output_path}")
         return True
     except Exception as e:
         flash_off()
-        print(f"[ERR] Camera capture failed: {e}")
+        print(f"[ERR] {CAMERA_MODEL} capture failed: {e}")
+        camera_disconnect()  # force reconnect on next shot
         return False
 
 # ── PRINTER ──
 
 def printer_status() -> dict:
     """Returns { status: 'online'|'offline'|'busy', queue: int }"""
-    if MOCK:
+    if MOCK_PRINTER:
         return {'status': 'online', 'queue': 0}
 
     try:
@@ -184,9 +249,8 @@ def printer_status() -> dict:
 
 def printer_print(file_path: str) -> bool:
     """Submit a print job. Returns True on success."""
-    if MOCK:
-        print(f"[MOCK] Print job submitted: {file_path}")
-        # Simulate print time in background
+    if MOCK_PRINTER:
+        print(f"[PRINTER] Mock print job: {file_path}")
         def _fake_print():
             indicator_set(True)
             time.sleep(3)
@@ -275,6 +339,9 @@ def load_config():
 
 
 config = load_config()
+
+CAMERA_MODEL = config.get('camera_model', 'webcam')
+print(f"[CAM] Using camera model: {CAMERA_MODEL}")
 
 # Session state — only one active at a time
 session = {
@@ -424,6 +491,7 @@ def api_session_start():
     stats['sessions'] += 1
     save_stats()
 
+    camera_connect()
     log_event('ok', f"Session started — {tpl['label']}")
 
     return jsonify({'token': session['token'], 'shots': tpl['shots']})
@@ -434,6 +502,7 @@ def api_session_cancel():
     """Admin cancels the current session."""
     if session['active']:
         log_event('warn', f"Session cancelled (was: {session['state']})")
+    camera_disconnect()
     _reset_session()
     return jsonify({'ok': True})
 
@@ -572,6 +641,7 @@ def api_print():
 
         log_event('ok', f"Print complete — {stats['paper']} sheets remaining")
 
+    camera_disconnect()
     _reset_session()
     return jsonify({'ok': ok})
 
@@ -587,6 +657,7 @@ def api_download():
         return jsonify({'error': 'Invalid session'}), 403
 
     log_event('ok', 'Guest chose download only')
+    camera_disconnect()
     _reset_session()
     return jsonify({'ok': True})
 
