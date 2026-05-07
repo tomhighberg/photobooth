@@ -132,7 +132,7 @@ def build_strip(raw_paths: list[str], overlay_path: str | None, output_path: str
     # Apply overlay on top
     if overlay_path and Path(overlay_path).exists():
         overlay = Image.open(overlay_path).convert('RGBA')
-        overlay = overlay.resize(CANVAS_SIZE, Image.LANCZOS)
+       # overlay = overlay.resize(CANVAS_SIZE, Image.LANCZOS)
         canvas.paste(overlay, (0, 0), mask=overlay)
 
     canvas.save(output_path, 'JPEG', quality=JPEG_QUALITY)
