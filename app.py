@@ -184,11 +184,11 @@ def camera_capture(output_path: str) -> bool:
     global _camera
     if CAMERA_MODEL == 'webcam':
         return _capture_webcam(output_path)
-    elif CAMERA_MODEL in ('D3400', 'lumix_s5ii', 'Panasonic DC-GH5'):
-        return _capture_gphoto2(output_path)
     else:
-        print(f"[ERR] Unknown camera model: {CAMERA_MODEL}")
-        return False
+        return _capture_gphoto2(output_path)
+    #else:
+     #   print(f"[ERR] Unknown camera model: {CAMERA_MODEL}")
+      #  return False
 
 
 def _capture_webcam(output_path: str) -> bool:
