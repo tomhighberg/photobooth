@@ -6,7 +6,7 @@ projector display, and all API endpoints.
 Camera model is selected via camera_model in config.json:
   "webcam"     — USB webcam via fswebcam (for testing)
   "d3400"      — Nikon D3400 via gphoto2
-  "lumix_s5ii" — Panasonic Lumix S5 II via gphoto2
+  "Panasonic DC-GH5" — Panasonic Lumix S5 II via gphoto2
 
 Set MOCK_PRINTER = True to log print jobs to console instead of sending
 to the physical printer (useful when the printer isn't connected).
@@ -121,7 +121,7 @@ def shutdown_monitor():
 
 # ── CAMERA ──
 # CAMERA_MODEL is set after config is loaded (see below).
-# Supported values: "webcam" | "d3400" | "lumix_s5ii"
+# Supported values: "webcam" | "d3400" | "Panasonic DC-GH5"
 
 _camera = None  # persistent gphoto2 handle; shared across shots in a session
 
@@ -180,7 +180,7 @@ def camera_capture(output_path: str) -> bool:
     """Capture one image and save to output_path. Returns True on success."""
     if CAMERA_MODEL == 'webcam':
         return _capture_webcam(output_path)
-    elif CAMERA_MODEL in ('d3400', 'lumix_s5ii'):
+    elif CAMERA_MODEL in ('d3400', 'lumix_s5ii', 'Panasonic DC-GH5'):
         return _capture_gphoto2(output_path)
     else:
         print(f"[ERR] Unknown camera model: {CAMERA_MODEL}")
