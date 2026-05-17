@@ -402,6 +402,12 @@ def log_event(level: str, msg: str):
 
 app = Flask(__name__, static_folder='static')
 
+# --- Captive Portal ---
+@app.route('/hotspot-detect.html')
+@app.route('/generate_204')
+@app.route('/connecttest.txt')
+def captive_portal():
+    return redirect('http://192.168.4.1:5000')
 
 # ── Page routes ──
 
