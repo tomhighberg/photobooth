@@ -129,8 +129,8 @@ _camera = None  # persistent gphoto2 handle; shared across shots in a session
 def camera_connect() -> bool:
     """Open and configure the camera. No-op for webcam. Returns True on success."""
     global _camera
-    if CAMERA_MODEL == 'webcam':
-        return True
+    # if CAMERA_MODEL == 'webcam':
+    #    return True
     if not _GP_AVAILABLE:
         print(f"[ERR] gphoto2 not available — cannot connect {CAMERA_MODEL}")
         return False
@@ -150,6 +150,8 @@ def camera_connect() -> bool:
 
 def _camera_configure(cfg_dict: dict):
     """Apply gphoto2 config key/value pairs from config.json."""
+    print(f"[CAM] _camera_configure called, CAMERA_MODEL={CAMERA_MODEL}")
+    # if CAMERA_MODEL == 'webcam':
     try:
         cfg = _camera.get_config()
         for key, value in cfg_dict.items():
