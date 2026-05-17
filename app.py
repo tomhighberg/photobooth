@@ -203,19 +203,19 @@ def _capture_gphoto2(output_path: str) -> bool:
         if not camera_connect():
             return False
     try:
-        flash_on()
         file_path = _camera.capture(gp.GP_CAPTURE_IMAGE)
-        flash_off()
+        print(f"[CAM] Camera file: {file_path.folder}/{file_path.name}")
         camera_file = _camera.file_get(
             file_path.folder, file_path.name, gp.GP_FILE_TYPE_NORMAL
         )
         camera_file.save(output_path)
+        import os
+        print(f"[CAM] File exists after save: {os.path.exists(output_path)}")
         print(f"[CAM] {CAMERA_MODEL} captured → {output_path}")
         return True
     except Exception as e:
-        flash_off()
         print(f"[ERR] {CAMERA_MODEL} capture failed: {e}")
-        camera_disconnect()  # force reconnect on next shot
+        camera_disconnect()
         return False
 
 # ── PRINTER ──
