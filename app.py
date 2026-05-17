@@ -699,9 +699,9 @@ def api_new_cartridge():
 @app.route('/api/shutdown', methods=['POST'])
 def api_shutdown():
     log_event('err', 'Shutdown requested from admin')
-    if MOCK:
-        print("[MOCK] Shutdown requested — ignoring on laptop")
-        return jsonify({'ok': True, 'mock': True})
+    if not _GPIO_AVAILABLE:
+        print("[GPIO] Shutdown requested — ignoring (no GPIO)")
+        return jsonify({'ok': True, 'gpio': False})
     os.system("sudo shutdown now")
     return jsonify({'ok': True})
 
@@ -714,18 +714,16 @@ def startup():
     gpio_setup()
     scan_existing_photos()
 
-    # Shutdown button monitor
     t = threading.Thread(target=shutdown_monitor, daemon=True)
     t.start()
 
-    mode = "MOCK" if MOCK else "HARDWARE"
-    log_event('ok', f'PhotoBooth started ({mode} mode)')
+    log_event('ok', f'PhotoBooth started — camera: {CAMERA_MODEL}')
     log_event('ok', f'Event: {config["event_name"]}')
     log_event('ok', f'Paper: {stats["paper"]}/108')
     log_event('ok', f'{len(photo_registry)} existing photos found')
 
     # Ready chime (Pi only)
-    if not MOCK:
+    if _GPIO_AVAILABLE:
         chime = BASE_DIR / 'sounds' / 'ready.wav'
         if chime.exists():
             os.system(f"aplay {chime}")
@@ -733,4 +731,4 @@ def startup():
 
 if __name__ == '__main__':
     startup()
-    app.run(host='0.0.0.0', port=5000, debug=MOCK)
+    app.run(host='0.0.0.0', port=5000, debug=False)
