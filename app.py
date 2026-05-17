@@ -180,7 +180,7 @@ def camera_capture(output_path: str) -> bool:
     """Capture one image and save to output_path. Returns True on success."""
     if CAMERA_MODEL == 'webcam':
         return _capture_webcam(output_path)
-    elif CAMERA_MODEL in ('d3400', 'lumix_s5ii', 'Panasonic DC-GH5'):
+    elif CAMERA_MODEL in ('D3400', 'lumix_s5ii', 'Panasonic DC-GH5'):
         return _capture_gphoto2(output_path)
     else:
         print(f"[ERR] Unknown camera model: {CAMERA_MODEL}")
