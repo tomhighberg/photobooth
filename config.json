@@ -14,6 +14,11 @@
       "imagequality":  "Fine",
       "imagesize":     "Large"
     },
+        "Panasonic DC-GH5": {
+      "capturetarget": "Internal RAM",
+      "imagequality":  "Fine",
+      "imagesize":     "Large"
+    },
     "webcam": {}
   },
   "templates": {
