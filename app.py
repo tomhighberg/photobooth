@@ -20,7 +20,7 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
-from flask import Flask, send_from_directory, jsonify, request, abort
+from flask import Flask, send_from_directory, jsonify, request, abort, render_template, redirect
 
 from composite import build_single, build_strip
 
