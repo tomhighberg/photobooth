@@ -178,6 +178,8 @@ def camera_disconnect():
 
 def camera_capture(output_path: str) -> bool:
     """Capture one image and save to output_path. Returns True on success."""
+    print(f"[CAM] _camera_capture called, output: {output_path}")
+    global _camera
     if CAMERA_MODEL == 'webcam':
         return _capture_webcam(output_path)
     elif CAMERA_MODEL in ('D3400', 'lumix_s5ii', 'Panasonic DC-GH5'):
@@ -198,6 +200,7 @@ def _capture_webcam(output_path: str) -> bool:
 
 
 def _capture_gphoto2(output_path: str) -> bool:
+    print(f"[CAM] _capture_gphoto2 called, output: {output_path}")
     global _camera
     if _camera is None:
         if not camera_connect():
