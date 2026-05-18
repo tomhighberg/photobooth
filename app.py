@@ -265,9 +265,9 @@ def _capture_gphoto2(output_path: str) -> bool:
 # ── PRINTER ──
 
 def printer_status() -> dict:
-    """Returns { status: 'online'|'offline'|'busy', queue: int }"""
+    """Returns { status: 'online'|'offline'|'busy', queue: int, name: str }"""
     if MOCK_PRINTER:
-        return {'status': 'online', 'queue': 0}
+        return {'status': 'online', 'queue': 0, 'name': 'CP1500'}
 
     try:
         conn = cups.Connection()
@@ -281,15 +281,15 @@ def printer_status() -> dict:
         if not name:
             name = list(printers.keys())[0] if printers else None
         if not name:
-            return {'status': 'offline', 'queue': 0}
+            return {'status': 'offline', 'queue': 0, 'name': 'No printer'}
 
         jobs = conn.getJobs(which_jobs='not-completed')
         queue = sum(1 for j in jobs.values() if j.get('printer-uri', '').endswith(name))
         status = 'busy' if queue > 0 else 'online'
-        return {'status': status, 'queue': queue}
+        return {'status': status, 'queue': queue, 'name': name}
     except Exception as e:
         print(f"[ERR] Printer status check failed: {e}")
-        return {'status': 'offline', 'queue': 0}
+        return {'status': 'offline', 'queue': 0, 'name': 'No printer'}
 
 def printer_print(file_path: str) -> bool:
     """Submit a print job. Returns True on success."""
@@ -504,6 +504,7 @@ def api_status():
         'shotNum':    session['shot_num'],
         'shotsTotal': session['shots_total'],
         'printer':    ps['status'],
+        'printerName': ps['name'],
         'queue':      ps['queue'],
         'paper':      stats['paper'],
         'shots':      stats['shots'],
@@ -718,6 +719,22 @@ def api_download():
 @app.route('/api/photos')
 def api_photos():
     return jsonify({'photos': photo_registry})
+
+
+# ── API: Delete photo ──
+
+@app.route('/api/photos/<int:photo_id>', methods=['DELETE'])
+def api_delete_photo(photo_id):
+    global photo_registry
+    entry = next((p for p in photo_registry if p['id'] == photo_id), None)
+    if not entry:
+        return jsonify({'error': 'Not found'}), 404
+    file_path = PHOTOS_DIR / entry['file']
+    if file_path.exists():
+        file_path.unlink()
+    photo_registry = [p for p in photo_registry if p['id'] != photo_id]
+    log_event('warn', f"Photo deleted: {entry['file']}")
+    return jsonify({'ok': True})
 
 
 # ── API: Printer status ──
