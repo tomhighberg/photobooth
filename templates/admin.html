@@ -937,8 +937,9 @@ function closeModal() {
   pendingModalAction = null;
 }
 function modalAction() {
+  const action = pendingModalAction;
   closeModal();
-  if (pendingModalAction) pendingModalAction();
+  if (action) action();
 }
 
 // ══════════════════════════════════════════════════════════════
