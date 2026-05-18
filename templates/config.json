@@ -6,8 +6,8 @@
   "camera_settings": {
     "D3400": {
       "capturetarget": "Internal RAM",
-      "imagequality":  "JPEG Fine",
-      "imagesize":     "Large"
+      "imagequality":  "JPEG Basic",
+      "imagesize":     "Small"
     },
     "lumix_s5ii": {
       "capturetarget": "Internal RAM",
