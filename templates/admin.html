@@ -274,27 +274,200 @@ body::after {
   border-radius: 6px;
   background: var(--mid);
   border: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  color: var(--muted);
-  font-family: var(--mono);
   position: relative;
   overflow: hidden;
+  cursor: pointer;
+}
+.recent-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 .recent-thumb .time {
   position: absolute;
   bottom: 3px;
   right: 5px;
   font-size: 8px;
-  color: var(--muted);
+  color: rgba(255,255,255,0.8);
   font-family: var(--mono);
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
 }
 .recent-empty {
   font-size: 13px;
   color: var(--muted);
   padding: 16px 0;
+}
+
+/* ── PHOTO MANAGEMENT GRID ── */
+.photo-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 4px;
+}
+.photo-tile {
+  position: relative;
+  aspect-ratio: 3/2;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--mid);
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.photo-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.photo-tile.selected {
+  border-color: var(--yellow);
+}
+.photo-tile .check {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.6);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  transition: all 0.15s;
+}
+.photo-tile.selected .check {
+  background: var(--yellow);
+  border-color: var(--yellow);
+  color: var(--bg);
+}
+.photo-mgmt-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  gap: 8px;
+}
+.photo-mgmt-toolbar .select-all-btn {
+  font-size: 12px;
+  color: var(--dim);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--body);
+  padding: 0;
+}
+.photo-mgmt-toolbar .select-all-btn:hover { color: var(--white); }
+.delete-selected-btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid rgba(232,65,42,0.35);
+  background: rgba(232,65,42,0.1);
+  color: var(--red);
+  font-family: var(--body);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.delete-selected-btn:disabled {
+  opacity: 0.3;
+  pointer-events: none;
+}
+.delete-selected-btn:active { background: rgba(232,65,42,0.2); }
+.photo-empty {
+  font-size: 13px;
+  color: var(--muted);
+  padding: 20px 0;
+  text-align: center;
+}
+
+/* ── LIGHTBOX ── */
+.lightbox {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  background: rgba(0,0,0,0.88);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: lbFadeIn 0.2s ease;
+}
+.lightbox.open { display: flex; }
+@keyframes lbFadeIn { from{opacity:0} to{opacity:1} }
+.lb-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.1);
+  border: none;
+  color: var(--white);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lb-image {
+  width: 100%;
+  max-width: 800px;
+  aspect-ratio: 3/2;
+  background: var(--card);
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+.lb-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.lb-meta {
+  text-align: center;
+  margin-bottom: 20px;
+}
+.lb-template {
+  font-family: var(--display);
+  font-size: 24px;
+  letter-spacing: 0.02em;
+}
+.lb-time {
+  font-size: 12px;
+  color: var(--dim);
+  margin-top: 2px;
+}
+.lb-actions {
+  display: flex;
+  gap: 10px;
+}
+.lb-btn {
+  padding: 12px 28px;
+  border-radius: 100px;
+  font-family: var(--body);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: transform 0.1s;
+}
+.lb-btn:active { transform: scale(0.96); }
+.lb-btn.primary {
+  background: var(--yellow);
+  color: var(--bg);
+}
+.lb-btn.ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--white);
 }
 
 /* ── ACTIONS ── */
@@ -485,7 +658,7 @@ body::after {
     <div class="printer-row">
       <div class="printer-status online" id="printerStatus">
         <div class="dot"></div>
-        <span id="printerStatusText">CP1500 Online</span>
+        <span id="printerStatusText">Online</span>
       </div>
       <div class="queue-count" id="queueCount">Queue: 0</div>
     </div>
@@ -524,6 +697,18 @@ body::after {
     </div>
   </div>
 
+  <!-- PHOTO MANAGEMENT -->
+  <div class="card">
+    <div class="card-label">Photo Management</div>
+    <div class="photo-grid" id="photoGrid">
+      <div class="photo-empty">Loading photos…</div>
+    </div>
+    <div class="photo-mgmt-toolbar">
+      <button class="select-all-btn" onclick="toggleSelectAll()" id="selectAllBtn">Select all</button>
+      <button class="delete-selected-btn" id="deleteBtn" disabled onclick="confirmDeleteSelected()">Delete Selected</button>
+    </div>
+  </div>
+
   <!-- ACTIONS -->
   <div class="card">
     <div class="card-label">Actions</div>
@@ -548,6 +733,20 @@ body::after {
 
 </div>
 
+<!-- LIGHTBOX -->
+<div class="lightbox" id="lightbox">
+  <button class="lb-close" onclick="closeLightbox()">✕</button>
+  <div class="lb-image"><img id="lbImage" src="" alt=""></div>
+  <div class="lb-meta">
+    <div class="lb-template" id="lbTemplate"></div>
+    <div class="lb-time" id="lbTime"></div>
+  </div>
+  <div class="lb-actions">
+    <button class="lb-btn primary" onclick="downloadLightboxPhoto()">📲 Save</button>
+    <button class="lb-btn ghost" onclick="closeLightbox()">Close</button>
+  </div>
+</div>
+
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
@@ -567,14 +766,15 @@ body::after {
 
 // ── State ──
 const state = {
-  event:    'Tom\'s Photobooth',
+  event:    'PhotoBooth',
   boothUp:  true,
   session:  'idle',       // idle | shooting | reviewing | printing
   template: null,
   shotNum:  0,
   shotsTotal: 0,
   printer:  'online',     // online | offline | busy
-  paper:    92,
+  printerName: 'CP1500',
+  paper:    108,
   queue:    0,
   shots:    0,
   prints:   0,
@@ -583,13 +783,14 @@ const state = {
   log:      []
 };
 
+let allPhotos = [];       // full registry from /api/photos
+let selectedIds = new Set();
+let lightboxPhoto = null;
+
 // ── Boot ──
 window.addEventListener('DOMContentLoaded', () => {
-  log('ok', 'Admin dashboard loaded');
-  log('ok', `Event: ${state.event}`);
-  log('ok', 'CP1500 online — paper 92/108');
-  render();
-
+  poll();
+  loadAllPhotos();
 });
 
 // ══════════════════════════════════════════════════════════════
@@ -629,9 +830,12 @@ function render() {
   // Printer
   const ps = document.getElementById('printerStatus');
   ps.className = 'printer-status ' + state.printer;
+  const printerLabel = state.printer.charAt(0).toUpperCase() + state.printer.slice(1);
   document.getElementById('printerStatusText').textContent =
-    'CP1500 ' + state.printer.charAt(0).toUpperCase() + state.printer.slice(1);
-  document.getElementById('queueCount').textContent = 'Queue: ' + state.queue;
+    (state.printerName || 'Printer') + ' — ' + printerLabel;
+  document.getElementById('queueCount').textContent = state.queue > 0
+    ? `Queue: ${state.queue} job${state.queue !== 1 ? 's' : ''}`
+    : 'Queue: idle';
 
   // Paper gauge
   const pct = (state.paper / 108) * 100;
@@ -650,9 +854,9 @@ function render() {
   if (state.photos.length === 0) {
     reel.innerHTML = '<div class="recent-empty">No photos yet — booth is idle</div>';
   } else {
-    reel.innerHTML = state.photos.slice(-8).reverse().map(p =>
-      `<div class="recent-thumb">
-        📷
+    reel.innerHTML = state.photos.slice().reverse().map(p =>
+      `<div class="recent-thumb" onclick="openLightbox(${p.id})">
+        <img src="/photos/${p.file}" alt="${p.template}" loading="lazy">
         <span class="time">${p.time}</span>
       </div>`
     ).join('');
@@ -751,6 +955,123 @@ function poll() {
 
 // Poll every 2 seconds
 setInterval(poll, 2000);
+
+// ══════════════════════════════════════════════════════════════
+//  LIGHTBOX
+// ══════════════════════════════════════════════════════════════
+
+function openLightbox(id) {
+  // Search recent photos from status, then full registry
+  const allSources = [...allPhotos, ...state.photos];
+  lightboxPhoto = allSources.find(p => p.id === id) || null;
+  if (!lightboxPhoto) return;
+
+  document.getElementById('lbImage').src = `/photos/${lightboxPhoto.file}`;
+  document.getElementById('lbImage').alt = lightboxPhoto.template || '';
+  document.getElementById('lbTemplate').textContent = lightboxPhoto.template || '';
+  document.getElementById('lbTime').textContent = `${state.event} · ${lightboxPhoto.time}`;
+  document.getElementById('lightbox').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.body.style.overflow = '';
+  lightboxPhoto = null;
+}
+
+function downloadLightboxPhoto() {
+  if (!lightboxPhoto) return;
+  const a = document.createElement('a');
+  a.href = `/photos/${lightboxPhoto.file}`;
+  a.download = lightboxPhoto.file;
+  a.click();
+}
+
+document.getElementById('lightbox').addEventListener('click', e => {
+  if (e.target.id === 'lightbox') closeLightbox();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeLightbox();
+});
+
+// ══════════════════════════════════════════════════════════════
+//  PHOTO MANAGEMENT
+// ══════════════════════════════════════════════════════════════
+
+function loadAllPhotos() {
+  fetch('/api/photos').then(r => r.json()).then(data => {
+    allPhotos = data.photos || [];
+    selectedIds.clear();
+    renderPhotoGrid();
+  });
+}
+
+function renderPhotoGrid() {
+  const grid = document.getElementById('photoGrid');
+  const deleteBtn = document.getElementById('deleteBtn');
+  const selectAllBtn = document.getElementById('selectAllBtn');
+
+  if (allPhotos.length === 0) {
+    grid.innerHTML = '<div class="photo-empty">No photos yet</div>';
+    deleteBtn.disabled = true;
+    selectAllBtn.textContent = 'Select all';
+    return;
+  }
+
+  const sorted = allPhotos.slice().reverse();
+  grid.innerHTML = sorted.map(p => {
+    const sel = selectedIds.has(p.id);
+    return `<div class="photo-tile${sel ? ' selected' : ''}" onclick="toggleTile(${p.id})" data-id="${p.id}">
+      <img src="/photos/${p.file}" alt="${p.template}" loading="lazy">
+      <div class="check">${sel ? '✓' : ''}</div>
+    </div>`;
+  }).join('');
+
+  deleteBtn.disabled = selectedIds.size === 0;
+  const allSelected = selectedIds.size === allPhotos.length && allPhotos.length > 0;
+  selectAllBtn.textContent = allSelected ? 'Deselect all' : 'Select all';
+}
+
+function toggleTile(id) {
+  if (selectedIds.has(id)) {
+    selectedIds.delete(id);
+  } else {
+    selectedIds.add(id);
+  }
+  renderPhotoGrid();
+}
+
+function toggleSelectAll() {
+  if (selectedIds.size === allPhotos.length) {
+    selectedIds.clear();
+  } else {
+    allPhotos.forEach(p => selectedIds.add(p.id));
+  }
+  renderPhotoGrid();
+}
+
+function confirmDeleteSelected() {
+  const count = selectedIds.size;
+  if (count === 0) return;
+  openModal(
+    `Delete ${count} Photo${count !== 1 ? 's' : ''}`,
+    `This will permanently delete ${count} photo${count !== 1 ? 's' : ''} from disk. This cannot be undone.`,
+    'Delete', 'danger',
+    deleteSelected
+  );
+}
+
+async function deleteSelected() {
+  const ids = [...selectedIds];
+  for (const id of ids) {
+    await fetch(`/api/photos/${id}`, { method: 'DELETE' });
+  }
+  selectedIds.clear();
+  toast(`Deleted ${ids.length} photo${ids.length !== 1 ? 's' : ''}`);
+  loadAllPhotos();
+  poll();
+}
 
 </script>
 </body>
