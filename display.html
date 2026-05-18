@@ -72,27 +72,6 @@ html, body {
 .slide-photo.strip  { width: 32vmin; aspect-ratio: 2/5; }
 .slide-photo.grid   { width: 60vmin; aspect-ratio: 1/1; }
 
-/* Mock photo fill */
-.slide-photo .mock-fill {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-.slide-photo .mock-icon {
-  font-size: 56px;
-  opacity: 0.7;
-}
-.slide-photo .mock-label {
-  font-size: 14px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: rgba(240,237,232,0.3);
-}
-
 /* ── CAPTION ── */
 .slide-caption {
   position: absolute;
@@ -293,33 +272,11 @@ body::after {
 //  CONFIG
 // ══════════════════════════════════════════════════════════════
 
-const MOCK = false;
 const EVENT_NAME = "Tom's Photobooth";
 const SLIDE_INTERVAL = 6000;    // ms between slides
 const POLL_INTERVAL  = 4000;    // ms between photo list polls
 const MAX_DOTS       = 16;      // hide dots if more photos than this
 
-// ══════════════════════════════════════════════════════════════
-//  MOCK DATA
-// ══════════════════════════════════════════════════════════════
-
-const HUES = [340, 25, 190, 260, 150, 35, 290, 10, 200, 170, 45, 310];
-const TYPE_ICONS = { single:'📷', strip:'🎞', grid:'⊞' };
-
-const MOCK_PHOTOS_FULL = [
-  { id:1,  template:'Classic Frame', type:'single', time:'7:12 PM', file:'photo_001.jpg' },
-  { id:2,  template:'Film Strip',    type:'strip',  time:'7:14 PM', file:'photo_002.jpg' },
-  { id:3,  template:'Gold Corners',  type:'single', time:'7:18 PM', file:'photo_003.jpg' },
-  { id:4,  template:'Party Grid',    type:'grid',   time:'7:21 PM', file:'photo_004.jpg' },
-  { id:5,  template:'Film Strip',    type:'strip',  time:'7:25 PM', file:'photo_005.jpg' },
-  { id:6,  template:'Classic Frame', type:'single', time:'7:28 PM', file:'photo_006.jpg' },
-  { id:7,  template:'Party Grid',    type:'grid',   time:'7:32 PM', file:'photo_007.jpg' },
-  { id:8,  template:'Gold Corners',  type:'single', time:'7:35 PM', file:'photo_008.jpg' },
-];
-
-// In mock mode, drip-feed photos in one at a time to simulate the event
-let mockIndex = 0;
-let mockDripTimer = null;
 
 // ══════════════════════════════════════════════════════════════
 //  STATE
@@ -337,27 +294,11 @@ let knownIds = new Set();
 window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('badgeText').textContent = EVENT_NAME;
   document.getElementById('idleTitle').textContent = EVENT_NAME;
-
-  if (MOCK) {
-    // Start with no photos, drip them in
-    mockDripTimer = setInterval(mockDrip, 5000);
-    // Also drip the first one quickly
-    setTimeout(mockDrip, 1500);
-  } else {
     fetchPhotos();
     setInterval(fetchPhotos, POLL_INTERVAL);
   }
-});
+);
 
-function mockDrip() {
-  if (mockIndex >= MOCK_PHOTOS_FULL.length) {
-    clearInterval(mockDripTimer);
-    return;
-  }
-  photos.push(MOCK_PHOTOS_FULL[mockIndex]);
-  onPhotosUpdated(MOCK_PHOTOS_FULL[mockIndex]);
-  mockIndex++;
-}
 
 function fetchPhotos() {
   fetch('/api/photos')
