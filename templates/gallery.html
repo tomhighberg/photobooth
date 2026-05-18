@@ -197,15 +197,7 @@ body::after {
   overflow: hidden;
   position: relative;
 }
-.lb-image .mock-photo {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-size: 48px;
-}
+
 
 .lb-meta {
   text-align: center;
@@ -282,7 +274,7 @@ body::after {
 
 <!-- HEADER -->
 <div class="gallery-header">
-  <div class="eyebrow" id="eventLabel">Sarah's 30th</div>
+  <div class="eyebrow" id="eventLabel">Tom's Photobooth</div>
   <div class="title">Gallery</div>
   <div class="count" id="photoCount">12 photos</div>
 </div>
@@ -290,9 +282,9 @@ body::after {
 <!-- FILTERS -->
 <div class="filter-bar">
   <button class="filter-chip active" data-filter="all" onclick="setFilter('all')">All</button>
-  <button class="filter-chip" data-filter="single" onclick="setFilter('single')">Singles</button>
-  <button class="filter-chip" data-filter="strip" onclick="setFilter('strip')">Film Strips</button>
-  <button class="filter-chip" data-filter="grid" onclick="setFilter('grid')">Party Grids</button>
+  <button class="filter-chip" data-filter="single" onclick="setFilter('single-classic')">Singles</button>
+  <button class="filter-chip" data-filter="strip" onclick="setFilter('film-party')">Film Strips</button>
+  <button class="filter-chip" data-filter="grid" onclick="setFilter('strip-party')">Party Grids</button>
 </div>
 
 <!-- GRID -->
@@ -336,25 +328,10 @@ body::after {
 
 const MOCK = false;
 
-const EVENT_NAME = "Sarah's 30th";
+const EVENT_NAME = "Tom's Photobooth";
 
 // Hue palette for mock photo placeholders
 const HUES = [340, 25, 190, 260, 150, 35, 290, 10, 200, 170, 45, 310];
-
-const MOCK_PHOTOS = [
-  { id:1,  template:'Classic Frame',  type:'single', time:'7:12 PM', file:'photo_001.jpg' },
-  { id:2,  template:'Film Strip',     type:'strip',  time:'7:14 PM', file:'photo_002.jpg' },
-  { id:3,  template:'Gold Corners',   type:'single', time:'7:18 PM', file:'photo_003.jpg' },
-  { id:4,  template:'Party Grid',     type:'grid',   time:'7:21 PM', file:'photo_004.jpg' },
-  { id:5,  template:'Film Strip',     type:'strip',  time:'7:25 PM', file:'photo_005.jpg' },
-  { id:6,  template:'Classic Frame',  type:'single', time:'7:28 PM', file:'photo_006.jpg' },
-  { id:7,  template:'Party Grid',     type:'grid',   time:'7:32 PM', file:'photo_007.jpg' },
-  { id:8,  template:'Gold Corners',   type:'single', time:'7:35 PM', file:'photo_008.jpg' },
-  { id:9,  template:'Film Strip',     type:'strip',  time:'7:38 PM', file:'photo_009.jpg' },
-  { id:10, template:'Classic Frame',  type:'single', time:'7:41 PM', file:'photo_010.jpg' },
-  { id:11, template:'Party Grid',     type:'grid',   time:'7:44 PM', file:'photo_011.jpg' },
-  { id:12, template:'Film Strip',     type:'strip',  time:'7:48 PM', file:'photo_012.jpg' },
-];
 
 const TYPE_ICONS = {
   single: '📷',
@@ -374,14 +351,10 @@ let selectedPhoto = null;
 window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('eventLabel').textContent = EVENT_NAME;
 
-  if (MOCK) {
-    photos = MOCK_PHOTOS;
-    renderGrid();
-  } else {
+
     fetchPhotos();
     // Poll for new photos every 5 seconds
     setInterval(fetchPhotos, 5000);
-  }
 });
 
 function fetchPhotos() {
@@ -471,16 +444,12 @@ function closeLightbox() {
 function downloadPhoto() {
   if (!selectedPhoto) return;
 
-  if (MOCK) {
-    alert(`Mock mode — would download ${selectedPhoto.file}`);
-    closeLightbox();
-  } else {
     const a = document.createElement('a');
     a.href = `/photos/${selectedPhoto.file}`;
     a.download = selectedPhoto.file;
     a.click();
     closeLightbox();
-  }
+  
 }
 
 // Close lightbox on backdrop tap
