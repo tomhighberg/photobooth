@@ -114,22 +114,11 @@ body::after {
 }
 .gallery-item:active { opacity: 0.8; }
 
-/* Mock photo placeholders — coloured blocks with template icon */
-.gallery-item .mock-photo {
+.gallery-item img {
   width: 100%;
   height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  font-size: 24px;
-}
-.gallery-item .mock-label {
-  font-size: 8px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: rgba(240,237,232,0.4);
+  object-fit: cover;
+  display: block;
 }
 
 /* type badge */
@@ -437,10 +426,7 @@ function renderGrid() {
     return `
       <div class="gallery-item" onclick="openLightbox(${p.id})"
            style="animation: fadeUp 0.3s ${i * 0.03}s both ease;">
-        <div class="mock-photo" style="background:hsl(${hue},25%,16%);">
-          <span>${icon}</span>
-          <span class="mock-label">${p.time}</span>
-        </div>
+        <img src="/photos/${p.file}" alt="${p.template}" loading="lazy">
         <div class="type-badge">${typeLabel}</div>
       </div>`;
   }).join('');
@@ -466,13 +452,7 @@ function openLightbox(id) {
   const icon = TYPE_ICONS[selectedPhoto.type] || '📷';
 
   document.getElementById('lbImage').innerHTML =
-    `<div class="mock-photo" style="background:hsl(${hue},25%,16%);border-radius:10px;">
-      <span>${icon}</span>
-    </div>`;
-
-  // In real mode, show actual image:
-  // document.getElementById('lbImage').innerHTML =
-  //   `<img src="/photos/${selectedPhoto.file}" style="width:100%;height:100%;object-fit:cover;border-radius:10px;">`;
+    `<img src="/photos/${selectedPhoto.file}" style="width:100%;height:100%;object-fit:cover;border-radius:10px;" alt="${selectedPhoto.template}">`;
 
   document.getElementById('lbTemplate').textContent = selectedPhoto.template;
   document.getElementById('lbTime').textContent =

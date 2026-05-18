@@ -274,14 +274,14 @@ body::after {
   border-radius: 6px;
   background: var(--mid);
   border: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  color: var(--muted);
-  font-family: var(--mono);
   position: relative;
   overflow: hidden;
+}
+.recent-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 .recent-thumb .time {
   position: absolute;
@@ -661,7 +661,7 @@ function render() {
   } else {
     reel.innerHTML = state.photos.slice(-8).reverse().map(p =>
       `<div class="recent-thumb">
-        📷
+        <img src="/photos/${p.file}" alt="${p.template || ''}">
         <span class="time">${p.time}</span>
       </div>`
     ).join('');

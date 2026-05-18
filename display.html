@@ -423,25 +423,12 @@ function buildSlides() {
 
     slide.innerHTML = `
       <div class="slide-photo ${photoClass}">
-        <div class="mock-fill" style="background:hsl(${hue},22%,14%);">
-          <span class="mock-icon">${icon}</span>
-          <span class="mock-label">#${p.id}</span>
-        </div>
+        <img src="/photos/${p.file}" style="width:100%;height:100%;object-fit:cover;border-radius:8px;" alt="${p.template}">
       </div>
       <div class="slide-caption">
         <div class="caption-template">${p.template}</div>
         <div class="caption-time">${p.time}</div>
       </div>`;
-
-    // Real mode image version:
-    // slide.innerHTML = `
-    //   <div class="slide-photo ${photoClass}">
-    //     <img src="/photos/${p.file}" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">
-    //   </div>
-    //   <div class="slide-caption">
-    //     <div class="caption-template">${p.template}</div>
-    //     <div class="caption-time">${p.time}</div>
-    //   </div>`;
 
     stage.appendChild(slide);
   });
