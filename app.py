@@ -732,8 +732,37 @@ def api_delete_photo(photo_id):
     file_path = PHOTOS_DIR / entry['file']
     if file_path.exists():
         file_path.unlink()
-    photo_registry = [p for p in photo_registry if p['id'] != photo_id]
+    photo_registry[:] = [p for p in photo_registry if p['id'] != photo_id]
     log_event('warn', f"Photo deleted: {entry['file']}")
+    return jsonify({'ok': True})
+
+
+# ── API: Raw shots list ──
+
+@app.route('/api/photos/raw')
+def api_raw_photos():
+    raw_files = sorted(PHOTOS_DIR.glob('raw_*.jpg'), key=lambda f: f.stat().st_mtime)
+    return jsonify({'photos': [
+        {
+            'file': f.name,
+            'time': datetime.fromtimestamp(f.stat().st_mtime).strftime('%-I:%M %p'),
+            'size': round(f.stat().st_size / 1024),
+        }
+        for f in raw_files
+    ]})
+
+
+# ── API: Delete raw shot ──
+
+@app.route('/api/photos/raw/<filename>', methods=['DELETE'])
+def api_delete_raw(filename):
+    if not filename.startswith('raw_') or not filename.endswith('.jpg') or '/' in filename or '..' in filename:
+        return jsonify({'error': 'Invalid filename'}), 400
+    file_path = PHOTOS_DIR / filename
+    if not file_path.exists():
+        return jsonify({'error': 'Not found'}), 404
+    file_path.unlink()
+    log_event('warn', f"Raw shot deleted: {filename}")
     return jsonify({'ok': True})
 
 

@@ -345,6 +345,36 @@ body::after {
   border-color: var(--yellow);
   color: var(--bg);
 }
+.photo-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.photo-card-header .card-label { margin-bottom: 0; }
+.grid-toggle {
+  display: flex;
+  background: var(--mid);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.toggle-btn {
+  padding: 5px 10px;
+  font-size: 11px;
+  font-family: var(--mono);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.toggle-btn.active {
+  background: var(--border);
+  color: var(--white);
+}
 .photo-mgmt-toolbar {
   display: flex;
   align-items: center;
@@ -384,6 +414,16 @@ body::after {
   color: var(--muted);
   padding: 20px 0;
   text-align: center;
+}
+.raw-tile-label {
+  position: absolute;
+  bottom: 4px;
+  left: 4px;
+  font-size: 8px;
+  font-family: var(--mono);
+  color: rgba(255,255,255,0.7);
+  text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+  line-height: 1;
 }
 
 /* ── LIGHTBOX ── */
@@ -699,7 +739,13 @@ body::after {
 
   <!-- PHOTO MANAGEMENT -->
   <div class="card">
-    <div class="card-label">Photo Management</div>
+    <div class="photo-card-header">
+      <div class="card-label">Photo Management</div>
+      <div class="grid-toggle">
+        <button class="toggle-btn active" id="btnComposites" onclick="setGridMode('composites')">Composites</button>
+        <button class="toggle-btn" id="btnRaws" onclick="setGridMode('raws')">Raw Shots</button>
+      </div>
+    </div>
     <div class="photo-grid" id="photoGrid">
       <div class="photo-empty">Loading photos…</div>
     </div>
@@ -1000,10 +1046,35 @@ document.addEventListener('keydown', e => {
 //  PHOTO MANAGEMENT
 // ══════════════════════════════════════════════════════════════
 
+let gridMode = 'composites';  // 'composites' | 'raws'
+let rawPhotos = [];
+let selectedRawFiles = new Set();
+
+function setGridMode(mode) {
+  gridMode = mode;
+  selectedIds.clear();
+  selectedRawFiles.clear();
+  document.getElementById('btnComposites').classList.toggle('active', mode === 'composites');
+  document.getElementById('btnRaws').classList.toggle('active', mode === 'raws');
+  if (mode === 'raws') {
+    loadRawPhotos();
+  } else {
+    loadAllPhotos();
+  }
+}
+
 function loadAllPhotos() {
   fetch('/api/photos').then(r => r.json()).then(data => {
     allPhotos = data.photos || [];
     selectedIds.clear();
+    renderPhotoGrid();
+  });
+}
+
+function loadRawPhotos() {
+  fetch('/api/photos/raw').then(r => r.json()).then(data => {
+    rawPhotos = data.photos || [];
+    selectedRawFiles.clear();
     renderPhotoGrid();
   });
 }
@@ -1013,65 +1084,102 @@ function renderPhotoGrid() {
   const deleteBtn = document.getElementById('deleteBtn');
   const selectAllBtn = document.getElementById('selectAllBtn');
 
-  if (allPhotos.length === 0) {
-    grid.innerHTML = '<div class="photo-empty">No photos yet</div>';
-    deleteBtn.disabled = true;
-    selectAllBtn.textContent = 'Select all';
-    return;
+  if (gridMode === 'composites') {
+    if (allPhotos.length === 0) {
+      grid.innerHTML = '<div class="photo-empty">No composite photos yet</div>';
+      deleteBtn.disabled = true;
+      selectAllBtn.textContent = 'Select all';
+      return;
+    }
+    const sorted = allPhotos.slice().reverse();
+    grid.innerHTML = sorted.map(p => {
+      const sel = selectedIds.has(p.id);
+      return `<div class="photo-tile${sel ? ' selected' : ''}" onclick="toggleTile(${p.id})">
+        <img src="/photos/${p.file}" alt="${p.template}" loading="lazy">
+        <div class="check">${sel ? '✓' : ''}</div>
+      </div>`;
+    }).join('');
+    deleteBtn.disabled = selectedIds.size === 0;
+    const allSel = selectedIds.size === allPhotos.length && allPhotos.length > 0;
+    selectAllBtn.textContent = allSel ? 'Deselect all' : 'Select all';
+
+  } else {
+    if (rawPhotos.length === 0) {
+      grid.innerHTML = '<div class="photo-empty">No raw shots found</div>';
+      deleteBtn.disabled = true;
+      selectAllBtn.textContent = 'Select all';
+      return;
+    }
+    const sorted = rawPhotos.slice().reverse();
+    grid.innerHTML = sorted.map(p => {
+      const sel = selectedRawFiles.has(p.file);
+      const idx = p.file.match(/_(\d+)\.jpg$/)?.[1] ?? '';
+      return `<div class="photo-tile${sel ? ' selected' : ''}" onclick="toggleRawTile('${p.file}')">
+        <img src="/photos/${p.file}" alt="raw" loading="lazy">
+        <div class="check">${sel ? '✓' : ''}</div>
+        <div class="raw-tile-label">shot ${idx}</div>
+      </div>`;
+    }).join('');
+    deleteBtn.disabled = selectedRawFiles.size === 0;
+    const allSel = selectedRawFiles.size === rawPhotos.length && rawPhotos.length > 0;
+    selectAllBtn.textContent = allSel ? 'Deselect all' : 'Select all';
   }
-
-  const sorted = allPhotos.slice().reverse();
-  grid.innerHTML = sorted.map(p => {
-    const sel = selectedIds.has(p.id);
-    return `<div class="photo-tile${sel ? ' selected' : ''}" onclick="toggleTile(${p.id})" data-id="${p.id}">
-      <img src="/photos/${p.file}" alt="${p.template}" loading="lazy">
-      <div class="check">${sel ? '✓' : ''}</div>
-    </div>`;
-  }).join('');
-
-  deleteBtn.disabled = selectedIds.size === 0;
-  const allSelected = selectedIds.size === allPhotos.length && allPhotos.length > 0;
-  selectAllBtn.textContent = allSelected ? 'Deselect all' : 'Select all';
 }
 
 function toggleTile(id) {
-  if (selectedIds.has(id)) {
-    selectedIds.delete(id);
-  } else {
-    selectedIds.add(id);
-  }
+  if (selectedIds.has(id)) selectedIds.delete(id);
+  else selectedIds.add(id);
+  renderPhotoGrid();
+}
+
+function toggleRawTile(file) {
+  if (selectedRawFiles.has(file)) selectedRawFiles.delete(file);
+  else selectedRawFiles.add(file);
   renderPhotoGrid();
 }
 
 function toggleSelectAll() {
-  if (selectedIds.size === allPhotos.length) {
-    selectedIds.clear();
+  if (gridMode === 'composites') {
+    if (selectedIds.size === allPhotos.length) selectedIds.clear();
+    else allPhotos.forEach(p => selectedIds.add(p.id));
   } else {
-    allPhotos.forEach(p => selectedIds.add(p.id));
+    if (selectedRawFiles.size === rawPhotos.length) selectedRawFiles.clear();
+    else rawPhotos.forEach(p => selectedRawFiles.add(p.file));
   }
   renderPhotoGrid();
 }
 
 function confirmDeleteSelected() {
-  const count = selectedIds.size;
+  const count = gridMode === 'composites' ? selectedIds.size : selectedRawFiles.size;
   if (count === 0) return;
+  const label = gridMode === 'raws' ? 'raw shot' : 'photo';
   openModal(
-    `Delete ${count} Photo${count !== 1 ? 's' : ''}`,
-    `This will permanently delete ${count} photo${count !== 1 ? 's' : ''} from disk. This cannot be undone.`,
+    `Delete ${count} ${label}${count !== 1 ? 's' : ''}`,
+    `This will permanently delete ${count} ${label}${count !== 1 ? 's' : ''} from disk. This cannot be undone.`,
     'Delete', 'danger',
     deleteSelected
   );
 }
 
 async function deleteSelected() {
-  const ids = [...selectedIds];
-  for (const id of ids) {
-    await fetch(`/api/photos/${id}`, { method: 'DELETE' });
+  if (gridMode === 'composites') {
+    const ids = [...selectedIds];
+    for (const id of ids) {
+      await fetch(`/api/photos/${id}`, { method: 'DELETE' });
+    }
+    selectedIds.clear();
+    toast(`Deleted ${ids.length} composite${ids.length !== 1 ? 's' : ''}`);
+    loadAllPhotos();
+    poll();
+  } else {
+    const files = [...selectedRawFiles];
+    for (const file of files) {
+      await fetch(`/api/photos/raw/${encodeURIComponent(file)}`, { method: 'DELETE' });
+    }
+    selectedRawFiles.clear();
+    toast(`Deleted ${files.length} raw shot${files.length !== 1 ? 's' : ''}`);
+    loadRawPhotos();
   }
-  selectedIds.clear();
-  toast(`Deleted ${ids.length} photo${ids.length !== 1 ? 's' : ''}`);
-  loadAllPhotos();
-  poll();
 }
 
 </script>
