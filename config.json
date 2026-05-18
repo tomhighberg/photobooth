@@ -4,7 +4,7 @@
   "active": true,
   "camera_model": "auto",
   "camera_settings": {
-    "Nikon DSC D3400": {
+    "D3400": {
       "capturetarget": "Internal RAM",
       "imagequality":  "JPEG Fine",
       "imagesize":     "Large"
