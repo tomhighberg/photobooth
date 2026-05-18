@@ -351,8 +351,7 @@ function buildSlides() {
   stage.innerHTML = '';
 
   photos.forEach((p, i) => {
-    const hue = HUES[(p.id - 1) % HUES.length];
-    const icon = TYPE_ICONS[p.type] || '📷';
+   
 
     const slide = document.createElement('div');
     slide.className = 'slide';
