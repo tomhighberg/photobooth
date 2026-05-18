@@ -417,6 +417,9 @@ go = function(n) {
 // ══════════════════════════════════════════════════════════════
 
 async function startShooting() {
+  // Always cancel any stale server session before starting fresh
+  await fetch('/api/session/cancel', { method: 'POST' });
+
   const tpl = TEMPLATES[selectedId];
   currentShot = 0;
   counting = false;
