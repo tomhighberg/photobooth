@@ -3,10 +3,9 @@ PhotoBooth — app.py
 Flask application serving the booth UI, admin dashboard, gallery,
 projector display, and all API endpoints.
 
-Camera model is selected via camera_model in config.json:
-  "webcam"     — USB webcam via fswebcam (for testing)
-  "d3400"      — Nikon D3400 via gphoto2
-  "Panasonic DC-GH5" — Panasonic Lumix S5 II via gphoto2
+The camera is auto-detected at session start via gphoto2. Settings are
+applied by matching the detected camera name against keys in camera_settings
+in config.json. Set camera_model to "webcam" to use a USB webcam instead.
 
 Set MOCK_PRINTER = True to log print jobs to console instead of sending
 to the physical printer (useful when the printer isn't connected).
@@ -120,24 +119,75 @@ def shutdown_monitor():
             time.sleep(5)
 
 # ── CAMERA ──
-# CAMERA_MODEL is set after config is loaded (see below).
-# Supported values: "webcam" | "d3400" | "Panasonic DC-GH5"
+# CAMERA_MODEL starts as 'auto' and is resolved at connect time via gphoto2
+# auto-detection. Set camera_model to "webcam" in config.json to bypass this.
 
-_camera = None  # persistent gphoto2 handle; shared across shots in a session
+_camera = None      # persistent gphoto2 handle; shared across shots in a session
+CAMERA_MODEL = 'auto'  # overwritten by config load; updated again at connect time
+
+
+def _detect_camera() -> tuple | None:
+    """
+    Query gphoto2 for attached cameras.
+    Returns (model_name, port) for the first detected camera, or None.
+    """
+    try:
+        cameras = list(gp.Camera.autodetect())
+        if not cameras:
+            print("[CAM] No cameras detected via gphoto2")
+            return None
+        name, port = cameras[0]
+        print(f"[CAM] Detected: {name} on {port}")
+        return name, port
+    except Exception as e:
+        print(f"[CAM] Auto-detect error: {e}")
+        return None
+
+
+def _resolve_settings(detected_name: str) -> tuple:
+    """
+    Match gphoto2-reported camera name against camera_settings keys in config.
+    Tries exact match, then case-insensitive, then partial substring.
+    Returns (matched_key, settings_dict).
+    """
+    cam_settings = config.get('camera_settings', {})
+    detected_lower = detected_name.lower()
+
+    for key in cam_settings:
+        if key.lower() == detected_lower:
+            return key, cam_settings[key]
+
+    for key in cam_settings:
+        key_lower = key.lower()
+        if key_lower in detected_lower or detected_lower in key_lower:
+            return key, cam_settings[key]
+
+    print(f"[CAM] No settings profile matched '{detected_name}' — proceeding without settings")
+    return detected_name, {}
 
 
 def camera_connect() -> bool:
-    """Open and configure the camera. No-op for webcam. Returns True on success."""
-    global _camera
-    # if CAMERA_MODEL == 'webcam':
-    #    return True
+    """Detect, open, and configure the camera. Returns True on success."""
+    global _camera, CAMERA_MODEL
+
+    if CAMERA_MODEL == 'webcam':
+        return True
+
     if not _GP_AVAILABLE:
-        print(f"[ERR] gphoto2 not available — cannot connect {CAMERA_MODEL}")
+        print("[ERR] gphoto2 not available")
         return False
+
+    detected = _detect_camera()
+    if detected is None:
+        return False
+
+    detected_name, _ = detected
+    resolved_key, cam_cfg = _resolve_settings(detected_name)
+    CAMERA_MODEL = resolved_key
+
     try:
         _camera = gp.Camera()
         _camera.init()
-        cam_cfg = config.get('camera_settings', {}).get(CAMERA_MODEL, {})
         if cam_cfg:
             _camera_configure(cam_cfg)
         print(f"[CAM] {CAMERA_MODEL} connected")
@@ -150,8 +200,6 @@ def camera_connect() -> bool:
 
 def _camera_configure(cfg_dict: dict):
     """Apply gphoto2 config key/value pairs from config.json."""
-    print(f"[CAM] _camera_configure called, CAMERA_MODEL={CAMERA_MODEL}")
-    # if CAMERA_MODEL == 'webcam':
     try:
         cfg = _camera.get_config()
         for key, value in cfg_dict.items():
@@ -167,7 +215,7 @@ def _camera_configure(cfg_dict: dict):
 
 
 def camera_disconnect():
-    """Release the gphoto2 camera handle. No-op for webcam."""
+    """Release the gphoto2 camera handle."""
     global _camera
     if _camera is not None:
         try:
@@ -180,15 +228,9 @@ def camera_disconnect():
 
 def camera_capture(output_path: str) -> bool:
     """Capture one image and save to output_path. Returns True on success."""
-    print(f"[CAM] _camera_capture called, output: {output_path}")
-    global _camera
     if CAMERA_MODEL == 'webcam':
         return _capture_webcam(output_path)
-    else:
-        return _capture_gphoto2(output_path)
-    #else:
-     #   print(f"[ERR] Unknown camera model: {CAMERA_MODEL}")
-      #  return False
+    return _capture_gphoto2(output_path)
 
 
 def _capture_webcam(output_path: str) -> bool:
@@ -202,7 +244,6 @@ def _capture_webcam(output_path: str) -> bool:
 
 
 def _capture_gphoto2(output_path: str) -> bool:
-    print(f"[CAM] _capture_gphoto2 called, output: {output_path}")
     global _camera
     if _camera is None:
         if not camera_connect():
@@ -214,8 +255,6 @@ def _capture_gphoto2(output_path: str) -> bool:
             file_path.folder, file_path.name, gp.GP_FILE_TYPE_NORMAL
         )
         camera_file.save(output_path)
-        import os
-        print(f"[CAM] File exists after save: {os.path.exists(output_path)}")
         print(f"[CAM] {CAMERA_MODEL} captured → {output_path}")
         return True
     except Exception as e:
@@ -345,8 +384,9 @@ def load_config():
 
 config = load_config()
 
-CAMERA_MODEL = config.get('camera_model', 'webcam')
-print(f"[CAM] Using camera model: {CAMERA_MODEL}")
+CAMERA_MODEL = config.get('camera_model', 'auto')
+# 'webcam' is the only value treated specially; anything else triggers auto-detection
+print(f"[CAM] Camera mode: {CAMERA_MODEL}")
 
 # Session state — only one active at a time
 session = {

@@ -2,9 +2,9 @@
   "event_name": "Disco Duck Presents",
   "event_emoji": "🎉",
   "active": true,
-  "camera_model": "D3400",
+  "camera_model": "auto",
   "camera_settings": {
-    "D3400": {
+    "Nikon DSC D3400": {
       "capturetarget": "Internal RAM",
       "imagequality":  "JPEG Fine",
       "imagesize":     "Large"
