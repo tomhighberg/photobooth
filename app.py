@@ -470,7 +470,7 @@ def page_gallery():
 
 @app.route('/display')
 def page_display():
-    return send_from_directory(TEMPLATES_DIR, 'display.html')
+    return send_from_directory(STATIC_DIR, 'display.html')
 
 # Serve photos directory
 @app.route('/photos/<path:filename>')
