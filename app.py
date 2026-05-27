@@ -214,6 +214,9 @@ def set_leds(state: str):
 # If a browser is connected it receives SSE events and updates its display.
 
 def _hw_reset():
+    if session['state'] == 'printing':
+        log_event('warn', 'HW: Reset ignored — print in progress')
+        return
     log_event('warn', 'HW: Reset')
     camera_disconnect()
     _reset_session()
