@@ -349,9 +349,7 @@ function go(n) {
 }
 
 function reset() {
-  if (sessionToken) {
-    fetch('/api/session/cancel', { method: 'POST' });
-  }
+  fetch('/api/session/cancel', { method: 'POST' });
   selectedId = null;
   currentShot = 0;
   counting = false;
@@ -583,10 +581,58 @@ function doSkip() {
   go(6);
 }
 
+// ══════════════════════════════════════════════════════════════
+//  HARDWARE BUTTON EVENTS (via Server-Sent Events from GPIO)
+// ══════════════════════════════════════════════════════════════
+
+function connectSSE() {
+  const es = new EventSource('/api/events');
+
+  es.onmessage = function(e) {
+    const evt = JSON.parse(e.data);
+
+    switch (evt.type) {
+      case 'reset':
+        // Always safe — cancels session and returns to welcome screen
+        reset();
+        break;
+
+      case 'select':
+        // Hardware template-select button: auto-start session and go straight
+        // to the shooting screen (skips the directions screen)
+        if (!TEMPLATES[evt.template]) break;
+        selectedId = evt.template;
+        startShooting();
+        break;
+
+      case 'trigger':
+        // Fire shutter only when on the shooting screen and not mid-countdown
+        if (document.getElementById('s4').classList.contains('active')) {
+          triggerShot();
+        }
+        break;
+
+      case 'print':
+        // Print only when on the review screen
+        if (document.getElementById('s5').classList.contains('active') && sessionToken) {
+          doPrint();
+        }
+        break;
+    }
+  };
+
+  es.onerror = function() {
+    // Connection dropped — reconnect after a short delay
+    es.close();
+    setTimeout(connectSSE, 3000);
+  };
+}
+
 // ── Init ──
 window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('welcomeTitle').textContent = EVENT.name;
   buildTemplateGrid();
+  connectSSE();
 });
 </script>
 </body>

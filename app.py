@@ -13,13 +13,14 @@ to the physical printer (useful when the printer isn't connected).
 
 import os
 import json
+import queue
 import time
 import uuid
 import threading
 from datetime import datetime
 from pathlib import Path
 
-from flask import Flask, send_from_directory, jsonify, request, abort, render_template, redirect
+from flask import Flask, send_from_directory, jsonify, request, abort, render_template, redirect, Response, stream_with_context
 
 from composite import build_single, build_strip
 
@@ -72,7 +73,18 @@ FLASH_PIN     = 17
 INDICATOR_PIN = 18
 SHUTDOWN_PIN  = 27
 
-_PIN_NAMES = {FLASH_PIN: 'FLASH', INDICATOR_PIN: 'INDICATOR', SHUTDOWN_PIN: 'SHUTDOWN'}
+# Hardware input buttons (BCM numbering, active-LOW via internal pull-up)
+BUTTON_RESET   = 5   # physical pin 29
+BUTTON_SINGLE  = 6   # physical pin 31
+BUTTON_QUAD    = 13  # physical pin 33
+BUTTON_TRIGGER = 19  # physical pin 35
+BUTTON_PRINT   = 26  # physical pin 37
+
+_PIN_NAMES = {
+    FLASH_PIN: 'FLASH', INDICATOR_PIN: 'INDICATOR', SHUTDOWN_PIN: 'SHUTDOWN',
+    BUTTON_RESET: 'BTN_RESET', BUTTON_SINGLE: 'BTN_SINGLE',
+    BUTTON_QUAD: 'BTN_QUAD', BUTTON_TRIGGER: 'BTN_TRIGGER', BUTTON_PRINT: 'BTN_PRINT',
+}
 
 def _gpio_log(pin: int, state: str):
     print(f"[GPIO] pin {pin} ({_PIN_NAMES.get(pin, '?')}) → {state}")
@@ -83,9 +95,14 @@ def gpio_setup():
         GPIO.setup(FLASH_PIN, GPIO.OUT, initial=GPIO.LOW)
         GPIO.setup(INDICATOR_PIN, GPIO.OUT, initial=GPIO.LOW)
         GPIO.setup(SHUTDOWN_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-        print("[GPIO] Setup complete — pins 17 (FLASH), 18 (INDICATOR), 27 (SHUTDOWN)")
+
+        for pin in (BUTTON_RESET, BUTTON_SINGLE, BUTTON_QUAD, BUTTON_TRIGGER, BUTTON_PRINT):
+            GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+            GPIO.add_event_detect(pin, GPIO.FALLING, callback=_button_callback, bouncetime=300)
+
+        print("[GPIO] Setup complete — outputs: 17 18 | buttons: 5 6 13 19 26")
     else:
-        print("[GPIO] Console-log mode — pins 17 (FLASH), 18 (INDICATOR), 27 (SHUTDOWN)")
+        print("[GPIO] Console-log mode — outputs: 17 18 | buttons: 5 6 13 19 26")
 
 def flash_on():
     if _GPIO_AVAILABLE:
@@ -117,6 +134,54 @@ def shutdown_monitor():
             time.sleep(0.1)
         else:
             time.sleep(5)
+
+
+# ── SSE (Server-Sent Events) ──
+# GPIO callbacks push events here; the browser subscribes via /api/events and
+# reacts to each event type so hardware buttons drive the UI without polling.
+
+_sse_subscribers: list[queue.Queue] = []
+_sse_lock = threading.Lock()
+
+
+def push_sse(event_type: str, **data):
+    """Broadcast an SSE event to all connected browsers."""
+    payload = 'data: ' + json.dumps({'type': event_type, **data}) + '\n\n'
+    with _sse_lock:
+        for q in list(_sse_subscribers):
+            try:
+                q.put_nowait(payload)
+            except queue.Full:
+                pass
+
+
+# ── Hardware button actions ──
+
+def _button_callback(channel: int):
+    """Dispatched from GPIO interrupt thread for any of the 5 input buttons."""
+    if channel == BUTTON_RESET:
+        log_event('warn', 'HW: Reset')
+        camera_disconnect()
+        _reset_session()
+        push_sse('reset')
+
+    elif channel == BUTTON_SINGLE:
+        template_id = config.get('hw_button_single', 'single-classic')
+        log_event('ok', f'HW: Select single → {template_id}')
+        push_sse('select', template=template_id)
+
+    elif channel == BUTTON_QUAD:
+        template_id = config.get('hw_button_quad', 'strip-party')
+        log_event('ok', f'HW: Select quad → {template_id}')
+        push_sse('select', template=template_id)
+
+    elif channel == BUTTON_TRIGGER:
+        log_event('ok', 'HW: Trigger')
+        push_sse('trigger')
+
+    elif channel == BUTTON_PRINT:
+        log_event('ok', 'HW: Print')
+        push_sse('print')
 
 # ── CAMERA ──
 # CAMERA_MODEL starts as 'auto' and is resolved at connect time via gphoto2
@@ -797,6 +862,36 @@ def api_shutdown():
     return jsonify({'ok': True})
 
 
+# ── API: SSE event stream ──
+
+@app.route('/api/events')
+def api_events():
+    """Server-Sent Events stream for hardware button → browser communication."""
+    q: queue.Queue = queue.Queue(maxsize=20)
+    with _sse_lock:
+        _sse_subscribers.append(q)
+
+    def generate():
+        try:
+            yield 'data: {"type":"connected"}\n\n'
+            while True:
+                try:
+                    msg = q.get(timeout=15)
+                    yield msg
+                except queue.Empty:
+                    yield ': heartbeat\n\n'
+        finally:
+            with _sse_lock:
+                if q in _sse_subscribers:
+                    _sse_subscribers.remove(q)
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
+    )
+
+
 # ══════════════════════════════════════════════════════════════
 #  STARTUP
 # ══════════════════════════════════════════════════════════════
@@ -822,4 +917,4 @@ def startup():
 
 if __name__ == '__main__':
     startup()
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
