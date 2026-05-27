@@ -582,8 +582,26 @@ function doSkip() {
 }
 
 // ══════════════════════════════════════════════════════════════
-//  HARDWARE BUTTON EVENTS (via Server-Sent Events from GPIO)
+//  HARDWARE BUTTON EVENTS (Server-Sent Events from GPIO)
+//
+//  Python drives the FULL session lifecycle when hardware buttons are used.
+//  The browser just watches these events and updates its display.
+//  When no browser is connected (headless mode), events are discarded.
+//  Touch buttons still work independently for screen-attached operation.
 // ══════════════════════════════════════════════════════════════
+
+function showReviewFromUrl(url) {
+  const area = document.getElementById('reviewPreview');
+  area.innerHTML = `<img src="${url}" style="width:100%;height:100%;object-fit:cover;border-radius:10px;">`;
+  if (selectedId && TEMPLATES[selectedId]) {
+    const tpl = TEMPLATES[selectedId];
+    document.getElementById('reviewMeta').textContent =
+      `${EVENT.name} · ${tpl.label} · just now`;
+    document.getElementById('printDesc').textContent = tpl.print_desc || '';
+    document.getElementById('dlDesc').textContent =
+      `${tpl.shots === 1 ? 'Single portrait' : tpl.shots + '-shot'} · saves to camera roll`;
+  }
+}
 
 function connectSSE() {
   const es = new EventSource('/api/events');
@@ -592,37 +610,84 @@ function connectSSE() {
     const evt = JSON.parse(e.data);
 
     switch (evt.type) {
+
       case 'reset':
-        // Always safe — cancels session and returns to welcome screen
-        reset();
+        // Hardware reset — always return to welcome regardless of current state
+        sessionToken = null;
+        selectedId   = null;
+        currentShot  = 0;
+        counting     = false;
+        document.querySelectorAll('.tpl-card').forEach(c => c.classList.remove('selected'));
+        go(1);
         break;
 
       case 'select':
-        // Hardware template-select button: auto-start session and go straight
-        // to the shooting screen (skips the directions screen)
+        // Python started a session via hardware button — grab its token and
+        // show the shooting screen. Browser does NOT call startShooting().
         if (!TEMPLATES[evt.template]) break;
-        selectedId = evt.template;
-        startShooting();
+        sessionToken = evt.token;
+        selectedId   = evt.template;
+        currentShot  = 0;
+        counting     = true;   // prevent touch-trigger while HW is in control
+        const tpl = TEMPLATES[evt.template];
+        document.getElementById('shootInfo').textContent =
+          `${tpl.label} · Shot 1 of ${evt.shots}`;
+        buildPips(evt.shots);
+        document.getElementById('cNum').textContent = '—';
+        document.getElementById('cSub').textContent = 'Get ready…';
+        document.getElementById('shutterBtn').classList.add('off');
+        go(4);
         break;
 
-      case 'trigger':
-        // Fire shutter only when on the shooting screen and not mid-countdown
-        if (document.getElementById('s4').classList.contains('active')) {
-          triggerShot();
+      case 'countdown':
+        // Python is counting down — mirror on screen if visible
+        const num = document.getElementById('cNum');
+        const sub = document.getElementById('cSub');
+        if (evt.n > 0) {
+          num.textContent = evt.n;
+          num.classList.add('flash');
+          setTimeout(() => num.classList.remove('flash'), 140);
+          sub.textContent = 'Smile! 😁';
+        } else {
+          num.classList.add('snap');
+          num.textContent = '✦';
+          setTimeout(() => num.classList.remove('snap'), 400);
         }
         break;
 
-      case 'print':
-        // Print only when on the review screen
-        if (document.getElementById('s5').classList.contains('active') && sessionToken) {
-          doPrint();
+      case 'shot_captured':
+        // Update pip progress after each hardware-triggered shot
+        currentShot = evt.shot;
+        buildPips(evt.total);
+        if (evt.shot < evt.total && selectedId && TEMPLATES[selectedId]) {
+          document.getElementById('shootInfo').textContent =
+            `${TEMPLATES[selectedId].label} · Shot ${evt.shot + 1} of ${evt.total}`;
+          document.getElementById('cNum').textContent = '—';
+          document.getElementById('cSub').textContent = 'Get ready…';
         }
+        break;
+
+      case 'reviewing':
+        // Composite done — show review screen with the real image
+        counting = false;
+        showReviewFromUrl(evt.url);
+        go(5);
+        break;
+
+      case 'printing':
+        // Print submitted by hardware button
+        document.getElementById('doneTitle').textContent = evt.ok ? 'Printing!' : 'Print failed';
+        document.getElementById('doneSub').textContent = evt.ok
+          ? 'Your photo is on its way. Grab it from the printer in about 30 seconds.'
+          : 'Something went wrong with the printer. Please see the host.';
+        sessionToken = null;
+        counting     = false;
+        go(6);
         break;
     }
   };
 
   es.onerror = function() {
-    // Connection dropped — reconnect after a short delay
     es.close();
     setTimeout(connectSSE, 3000);
   };

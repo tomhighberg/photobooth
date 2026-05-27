@@ -80,10 +80,16 @@ BUTTON_QUAD    = 13  # physical pin 33
 BUTTON_TRIGGER = 19  # physical pin 35
 BUTTON_PRINT   = 26  # physical pin 37
 
+# Status LEDs (BCM numbering, active-HIGH, wire via 220Ω resistor to GND)
+LED_READY = 12   # green  — physical pin 32: idle / session ready, waiting to trigger
+LED_SHOOT = 16   # amber  — physical pin 36: counting down / capturing / processing
+LED_PRINT = 20   # white  — physical pin 38: composite ready, press Print
+
 _PIN_NAMES = {
     FLASH_PIN: 'FLASH', INDICATOR_PIN: 'INDICATOR', SHUTDOWN_PIN: 'SHUTDOWN',
     BUTTON_RESET: 'BTN_RESET', BUTTON_SINGLE: 'BTN_SINGLE',
     BUTTON_QUAD: 'BTN_QUAD', BUTTON_TRIGGER: 'BTN_TRIGGER', BUTTON_PRINT: 'BTN_PRINT',
+    LED_READY: 'LED_READY', LED_SHOOT: 'LED_SHOOT', LED_PRINT: 'LED_PRINT',
 }
 
 def _gpio_log(pin: int, state: str):
@@ -92,17 +98,20 @@ def _gpio_log(pin: int, state: str):
 def gpio_setup():
     if _GPIO_AVAILABLE:
         GPIO.setmode(GPIO.BCM)
-        GPIO.setup(FLASH_PIN, GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(FLASH_PIN,     GPIO.OUT, initial=GPIO.LOW)
         GPIO.setup(INDICATOR_PIN, GPIO.OUT, initial=GPIO.LOW)
-        GPIO.setup(SHUTDOWN_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        GPIO.setup(LED_READY,     GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(LED_SHOOT,     GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(LED_PRINT,     GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(SHUTDOWN_PIN,  GPIO.IN,  pull_up_down=GPIO.PUD_UP)
 
         for pin in (BUTTON_RESET, BUTTON_SINGLE, BUTTON_QUAD, BUTTON_TRIGGER, BUTTON_PRINT):
             GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
             GPIO.add_event_detect(pin, GPIO.FALLING, callback=_button_callback, bouncetime=300)
 
-        print("[GPIO] Setup complete — outputs: 17 18 | buttons: 5 6 13 19 26")
+        print("[GPIO] Setup complete — LEDs: 12 16 20 | buttons: 5 6 13 19 26")
     else:
-        print("[GPIO] Console-log mode — outputs: 17 18 | buttons: 5 6 13 19 26")
+        print("[GPIO] Console-log mode — LEDs: 12 16 20 | buttons: 5 6 13 19 26")
 
 def flash_on():
     if _GPIO_AVAILABLE:
@@ -137,15 +146,16 @@ def shutdown_monitor():
 
 
 # ── SSE (Server-Sent Events) ──
-# GPIO callbacks push events here; the browser subscribes via /api/events and
-# reacts to each event type so hardware buttons drive the UI without polling.
+# When a browser IS connected it subscribes to /api/events and becomes a
+# passive display layer. When running headless (buttons + LEDs only), SSE
+# events are simply queued to zero subscribers and discarded harmlessly.
 
 _sse_subscribers: list[queue.Queue] = []
 _sse_lock = threading.Lock()
 
 
 def push_sse(event_type: str, **data):
-    """Broadcast an SSE event to all connected browsers."""
+    """Broadcast an SSE event to all connected browsers (no-op if none)."""
     payload = 'data: ' + json.dumps({'type': event_type, **data}) + '\n\n'
     with _sse_lock:
         for q in list(_sse_subscribers):
@@ -155,33 +165,196 @@ def push_sse(event_type: str, **data):
                 pass
 
 
+# ── Status LED control ──
+
+_led_blink_stop = threading.Event()
+
+
+def _led_blink(pin: int, interval: float):
+    while not _led_blink_stop.wait(0):
+        if _GPIO_AVAILABLE:
+            GPIO.output(pin, GPIO.HIGH)
+        if _led_blink_stop.wait(interval):
+            break
+        if _GPIO_AVAILABLE:
+            GPIO.output(pin, GPIO.LOW)
+        _led_blink_stop.wait(interval)
+    if _GPIO_AVAILABLE:
+        try:
+            GPIO.output(pin, GPIO.LOW)
+        except Exception:
+            pass
+
+
+def set_leds(state: str):
+    """Drive the three status LEDs to reflect current booth state."""
+    _led_blink_stop.set()
+    time.sleep(0.05)   # let any running blink thread exit
+    _led_blink_stop.clear()
+
+    if not _GPIO_AVAILABLE:
+        print(f"[LED] {state}")
+        return
+
+    for pin in (LED_READY, LED_SHOOT, LED_PRINT):
+        GPIO.output(pin, GPIO.LOW)
+
+    if state in ('idle', 'shoot_ready'):
+        GPIO.output(LED_READY, GPIO.HIGH)
+    elif state in ('shooting', 'processing'):
+        GPIO.output(LED_SHOOT, GPIO.HIGH)
+    elif state == 'print_ready':
+        GPIO.output(LED_PRINT, GPIO.HIGH)
+    elif state == 'printing':
+        threading.Thread(target=_led_blink, args=(LED_PRINT, 0.5), daemon=True).start()
+
+
 # ── Hardware button actions ──
+# Buttons drive the FULL session lifecycle in Python. No browser required.
+# If a browser is connected it receives SSE events and updates its display.
+
+def _hw_reset():
+    log_event('warn', 'HW: Reset')
+    camera_disconnect()
+    _reset_session()
+    set_leds('idle')
+    push_sse('reset')
+
+
+def _hw_select(template_id: str):
+    if template_id not in config['templates']:
+        log_event('err', f'HW: Unknown template {template_id!r}')
+        return
+    camera_disconnect()
+    _reset_session()
+
+    tpl = config['templates'][template_id]
+    session['active']      = True
+    session['token']       = str(uuid.uuid4())
+    session['template']    = template_id
+    session['shot_num']    = 0
+    session['shots_total'] = tpl['shots']
+    session['state']       = 'shooting'
+    session['raw_files']   = []
+    session['composite']   = None
+
+    stats['sessions'] += 1
+    save_stats()
+    camera_connect()
+    set_leds('shoot_ready')
+    log_event('ok', f'HW: Session started — {tpl["label"]}')
+    push_sse('select', template=template_id, token=session['token'], shots=tpl['shots'])
+
+
+def _do_hw_trigger():
+    """Runs in its own thread: countdown + all captures + composite build."""
+    if not session['active'] or session['state'] != 'shooting':
+        log_event('warn', 'HW: Trigger — not in shooting state, ignoring')
+        return
+
+    total = session['shots_total']
+
+    for i in range(total):
+        # 3-second countdown: one LED flash per tick, SSE event for display
+        for c in range(3, 0, -1):
+            push_sse('countdown', n=c)
+            if _GPIO_AVAILABLE:
+                GPIO.output(LED_SHOOT, GPIO.HIGH)
+            time.sleep(0.15)
+            if _GPIO_AVAILABLE:
+                GPIO.output(LED_SHOOT, GPIO.LOW)
+            time.sleep(0.85)
+
+        push_sse('countdown', n=0)   # "snap" moment for the display
+
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+        shot_idx = session['shot_num']
+        raw_path = str(PHOTOS_DIR / f"raw_{ts}_{shot_idx}.jpg")
+
+        flash_on()
+        ok = camera_capture(raw_path)
+        flash_off()
+
+        if not ok:
+            log_event('err', f'HW: Shot {shot_idx + 1} failed')
+            set_leds('idle')
+            camera_disconnect()
+            _reset_session()
+            push_sse('reset')
+            return
+
+        session['raw_files'].append(raw_path)
+        session['shot_num'] = shot_idx + 1
+        stats['shots'] += 1
+        save_stats()
+        log_event('ok', f'HW: Shot {shot_idx + 1}/{total}')
+        push_sse('shot_captured', shot=session['shot_num'], total=total)
+
+        if i < total - 1:
+            # Brief steady glow between shots so guests know another is coming
+            if _GPIO_AVAILABLE:
+                GPIO.output(LED_SHOOT, GPIO.HIGH)
+            time.sleep(1.2)
+            if _GPIO_AVAILABLE:
+                GPIO.output(LED_SHOOT, GPIO.LOW)
+            time.sleep(0.3)
+
+    # SHOOT LED steady while building composite
+    if _GPIO_AVAILABLE:
+        GPIO.output(LED_SHOOT, GPIO.HIGH)
+    _do_composite()
+    if _GPIO_AVAILABLE:
+        GPIO.output(LED_SHOOT, GPIO.LOW)
+
+    set_leds('print_ready')
+    composite_url = f"/photos/{Path(session['composite']).name}"
+    log_event('ok', 'HW: Composite ready — press Print')
+    push_sse('reviewing', url=composite_url)
+
+
+def _do_hw_print():
+    """Runs in its own thread: submit print job then reset to idle."""
+    if not session['active'] or session['state'] != 'reviewing':
+        log_event('warn', 'HW: Print — not in reviewing state, ignoring')
+        return
+
+    set_leds('printing')
+    session['state'] = 'printing'
+    ok = printer_print(session['composite'])
+
+    if ok:
+        stats['prints'] += 1
+        stats['paper'] = max(0, stats['paper'] - 1)
+        save_stats()
+        if stats['paper'] <= 20:
+            log_event('warn', f'Low paper: {stats["paper"]} remaining')
+
+    push_sse('printing', ok=ok)
+    camera_disconnect()
+    _reset_session()
+    set_leds('idle')
+
 
 def _button_callback(channel: int):
     """Dispatched from GPIO interrupt thread for any of the 5 input buttons."""
     if channel == BUTTON_RESET:
-        log_event('warn', 'HW: Reset')
-        camera_disconnect()
-        _reset_session()
-        push_sse('reset')
-
+        _hw_reset()
     elif channel == BUTTON_SINGLE:
-        template_id = config.get('hw_button_single', 'single-classic')
-        log_event('ok', f'HW: Select single → {template_id}')
-        push_sse('select', template=template_id)
-
+        threading.Thread(
+            target=_hw_select,
+            args=(config.get('hw_button_single', 'single-classic'),),
+            daemon=True,
+        ).start()
     elif channel == BUTTON_QUAD:
-        template_id = config.get('hw_button_quad', 'strip-party')
-        log_event('ok', f'HW: Select quad → {template_id}')
-        push_sse('select', template=template_id)
-
+        threading.Thread(
+            target=_hw_select,
+            args=(config.get('hw_button_quad', 'strip-party'),),
+            daemon=True,
+        ).start()
     elif channel == BUTTON_TRIGGER:
-        log_event('ok', 'HW: Trigger')
-        push_sse('trigger')
-
+        threading.Thread(target=_do_hw_trigger, daemon=True).start()
     elif channel == BUTTON_PRINT:
-        log_event('ok', 'HW: Print')
-        push_sse('print')
+        threading.Thread(target=_do_hw_print, daemon=True).start()
 
 # ── CAMERA ──
 # CAMERA_MODEL starts as 'auto' and is resolved at connect time via gphoto2
@@ -898,6 +1071,7 @@ def api_events():
 
 def startup():
     gpio_setup()
+    set_leds('idle')
     scan_existing_photos()
 
     t = threading.Thread(target=shutdown_monitor, daemon=True)
