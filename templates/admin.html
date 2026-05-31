@@ -692,6 +692,29 @@ body::after {
     </div>
   </div>
 
+  <!-- BUTTON MODE -->
+  <div class="card">
+    <div class="card-label">Button Mode — Default Template</div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <select id="gpioTemplateSelect" style="
+        flex:1;
+        background:var(--mid);
+        border:1px solid var(--border);
+        color:var(--white);
+        font-family:var(--body);
+        font-size:14px;
+        padding:10px 12px;
+        border-radius:8px;
+        appearance:none;
+        cursor:pointer;
+      "></select>
+      <button class="action-btn primary" style="width:auto;padding:10px 18px;white-space:nowrap;" onclick="saveGpioTemplate()">
+        Save
+      </button>
+    </div>
+    <div id="gpioTemplateMeta" style="font-size:12px;color:var(--dim);margin-top:8px;line-height:1.5;"></div>
+  </div>
+
   <!-- PRINTER -->
   <div class="card">
     <div class="card-label">Printer</div>
@@ -837,6 +860,7 @@ let lightboxPhoto = null;
 window.addEventListener('DOMContentLoaded', () => {
   poll();
   loadAllPhotos();
+  loadGpioTemplates();
 });
 
 // ══════════════════════════════════════════════════════════════
@@ -1159,6 +1183,44 @@ function confirmDeleteSelected() {
     'Delete', 'danger',
     deleteSelected
   );
+}
+
+// ══════════════════════════════════════════════════════════════
+//  BUTTON MODE — GPIO default template
+// ══════════════════════════════════════════════════════════════
+
+let _allTemplates = {};
+
+function loadGpioTemplates() {
+  fetch('/api/config').then(r => r.json()).then(data => {
+    _allTemplates = data.templates || {};
+    const current = data.gpio_default_template || '';
+    const sel = document.getElementById('gpioTemplateSelect');
+    sel.innerHTML = Object.entries(_allTemplates).map(([id, tpl]) =>
+      `<option value="${id}"${id === current ? ' selected' : ''}>${tpl.label}</option>`
+    ).join('');
+    updateGpioMeta(current);
+    sel.addEventListener('change', () => updateGpioMeta(sel.value));
+  });
+}
+
+function updateGpioMeta(id) {
+  const tpl = _allTemplates[id];
+  const el = document.getElementById('gpioTemplateMeta');
+  if (!tpl) { el.textContent = ''; return; }
+  el.textContent = `${tpl.shots} shot${tpl.shots !== 1 ? 's' : ''} · ${tpl.print_desc || ''}`;
+}
+
+function saveGpioTemplate() {
+  const id = document.getElementById('gpioTemplateSelect').value;
+  fetch('/api/config/gpio-template', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ template: id }),
+  }).then(r => r.json()).then(d => {
+    if (d.ok) toast(`Button mode → ${_allTemplates[id]?.label}`);
+    else toast('Error saving template');
+  });
 }
 
 async function deleteSelected() {

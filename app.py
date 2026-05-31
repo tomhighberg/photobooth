@@ -66,6 +66,13 @@ except ImportError:
     print("[WARN] RPi.GPIO not available — GPIO in console-log mode")
     _GPIO_AVAILABLE = False
 
+try:
+    from rpi_ws281x import PixelStrip, Color as LEDColor
+    _WS281X_AVAILABLE = True
+except ImportError:
+    print("[WARN] rpi_ws281x not available — LED strip in console-log mode")
+    _WS281X_AVAILABLE = False
+
 # ── GPIO ──
 
 FLASH_PIN     = 17
@@ -77,19 +84,64 @@ TRIGGER_BTN_PIN = 5
 PRINT_BTN_PIN   = 6
 RESET_BTN_PIN   = 13
 
-# Status / countdown outputs
+# Status output
 READY_LIGHT_PIN  = 19
-COUNTDOWN_PINS   = [26, 20, 21]   # light up 3→2→1 before each shot
+
+# Addressable LED strip (WS2812 / NeoPixel) — single data pin
+LED_STRIP_PIN    = 12   # must be a hardware-PWM-capable pin (BCM 12 or 18)
+LED_COUNT        = 8
+LED_FREQ_HZ      = 800_000
+LED_DMA          = 10
+LED_BRIGHTNESS   = 200  # 0–255
+LED_INVERT       = False
+LED_CHANNEL      = 0    # 0 for pin 12/18, 1 for pin 13/19
+
+_led_strip = None       # initialised in led_strip_init()
 
 _PIN_NAMES = {
     FLASH_PIN: 'FLASH', INDICATOR_PIN: 'INDICATOR', SHUTDOWN_PIN: 'SHUTDOWN',
     TRIGGER_BTN_PIN: 'TRIGGER_BTN', PRINT_BTN_PIN: 'PRINT_BTN', RESET_BTN_PIN: 'RESET_BTN',
-    READY_LIGHT_PIN: 'READY_LIGHT',
-    **{p: f'COUNTDOWN_{i+1}' for i, p in enumerate(COUNTDOWN_PINS)},
+    READY_LIGHT_PIN: 'READY_LIGHT', LED_STRIP_PIN: 'LED_STRIP',
 }
 
 def _gpio_log(pin: int, state: str):
     print(f"[GPIO] pin {pin} ({_PIN_NAMES.get(pin, '?')}) → {state}")
+
+def led_strip_init():
+    global _led_strip
+    if _WS281X_AVAILABLE:
+        _led_strip = PixelStrip(
+            LED_COUNT, LED_STRIP_PIN, LED_FREQ_HZ,
+            LED_DMA, LED_INVERT, LED_BRIGHTNESS, LED_CHANNEL,
+        )
+        _led_strip.begin()
+        print(f"[LED] Strip initialised — {LED_COUNT} LEDs on pin {LED_STRIP_PIN}")
+    else:
+        print("[LED] Console-log mode")
+
+
+def led_set_all(r: int, g: int, b: int):
+    """Set all LEDs to a single RGB colour. Pass (0,0,0) to clear."""
+    if _WS281X_AVAILABLE and _led_strip:
+        c = LEDColor(r, g, b)
+        for i in range(LED_COUNT):
+            _led_strip.setPixelColor(i, c)
+        _led_strip.show()
+    else:
+        print(f"[LED] all → rgb({r},{g},{b})")
+
+
+def led_set_count(n: int, r: int, g: int, b: int):
+    """Light the first n LEDs in colour (r,g,b), clear the rest."""
+    if _WS281X_AVAILABLE and _led_strip:
+        on_c  = LEDColor(r, g, b)
+        off_c = LEDColor(0, 0, 0)
+        for i in range(LED_COUNT):
+            _led_strip.setPixelColor(i, on_c if i < n else off_c)
+        _led_strip.show()
+    else:
+        print(f"[LED] {n}/{LED_COUNT} lit → rgb({r},{g},{b})")
+
 
 def gpio_setup():
     if _GPIO_AVAILABLE:
@@ -97,8 +149,6 @@ def gpio_setup():
         GPIO.setup(FLASH_PIN,        GPIO.OUT, initial=GPIO.LOW)
         GPIO.setup(INDICATOR_PIN,    GPIO.OUT, initial=GPIO.LOW)
         GPIO.setup(READY_LIGHT_PIN,  GPIO.OUT, initial=GPIO.LOW)
-        for pin in COUNTDOWN_PINS:
-            GPIO.setup(pin, GPIO.OUT, initial=GPIO.LOW)
         GPIO.setup(SHUTDOWN_PIN,     GPIO.IN, pull_up_down=GPIO.PUD_UP)
         GPIO.setup(TRIGGER_BTN_PIN,  GPIO.IN, pull_up_down=GPIO.PUD_UP)
         GPIO.setup(PRINT_BTN_PIN,    GPIO.IN, pull_up_down=GPIO.PUD_UP)
@@ -106,6 +156,7 @@ def gpio_setup():
         print("[GPIO] Setup complete")
     else:
         print("[GPIO] Console-log mode")
+    led_strip_init()
 
 def flash_on():
     if _GPIO_AVAILABLE:
@@ -163,35 +214,29 @@ def _ready_light(on: bool):
 
 
 def _countdown_lights_clear():
-    for pin in COUNTDOWN_PINS:
-        if _GPIO_AVAILABLE:
-            GPIO.output(pin, GPIO.LOW)
-        else:
-            _gpio_log(pin, 'OFF')
+    led_set_all(0, 0, 0)
 
+
+# ── Countdown pattern — edit the colours/steps here ──────────────────────────
+#
+# Called once per shot. `seconds` is the countdown duration.
+# Each step: (duration_secs, n_leds_lit, r, g, b)
+# The strip drains from all-lit amber down to a single red LED, then
+# flashes white at capture time (handled by the caller with flash_on/off).
+#
+_COUNTDOWN_STEPS = [
+    (1.0, 8, 220, 120,   0),   # 3 — all 8 amber
+    (1.0, 5, 220,  60,   0),   # 2 — 5 orange
+    (1.0, 2, 200,   0,   0),   # 1 — 2 red
+]
 
 def _countdown(seconds: int = 3):
-    """Light countdown LEDs: all on → drain one per second → capture."""
-    # Turn all on
-    for pin in COUNTDOWN_PINS:
-        if _GPIO_AVAILABLE:
-            GPIO.output(pin, GPIO.HIGH)
-        else:
-            _gpio_log(pin, 'ON')
-
-    # Turn off one per second from the end
-    for i in range(min(seconds, len(COUNTDOWN_PINS))):
-        time.sleep(1)
-        pin = COUNTDOWN_PINS[-(i + 1)]
-        if _GPIO_AVAILABLE:
-            GPIO.output(pin, GPIO.LOW)
-        else:
-            _gpio_log(pin, 'OFF')
-
-    # Any remaining time beyond the LED count
-    extra = seconds - len(COUNTDOWN_PINS)
-    if extra > 0:
-        time.sleep(extra)
+    """Run the LED strip countdown then clear. Capture happens after this returns."""
+    steps = _COUNTDOWN_STEPS[:seconds]
+    for duration, n, r, g, b in steps:
+        led_set_count(n, r, g, b)
+        time.sleep(duration)
+    led_set_all(0, 0, 0)
 
 
 def gpio_button_loop():
@@ -303,6 +348,11 @@ def gpio_button_loop():
                 log_event('warn', '[BTN] Print discarded by reset button')
                 break
             if _btn_pressed(PRINT_BTN_PIN):
+                if not session['composite_valid']:
+                    log_event('err', '[BTN] Print blocked — composite failed size check')
+                    # Keep waiting; guest or operator can reset manually
+                    time.sleep(1)
+                    continue
                 printed = True
                 break
             time.sleep(0.05)
@@ -604,6 +654,10 @@ def load_config():
     }
 
 
+# Composites below this size are treated as blank/failed (overlay-only, no photo).
+# A real photo composite is typically 500 KB+; a blank is ~30–80 KB.
+COMPOSITE_MIN_BYTES = 150_000
+
 config = load_config()
 
 CAMERA_MODEL = config.get('camera_model', 'auto')
@@ -612,14 +666,15 @@ print(f"[CAM] Camera mode: {CAMERA_MODEL}")
 
 # Session state — only one active at a time
 session = {
-    'active':    False,
-    'token':     None,
-    'template':  None,
-    'shot_num':  0,
-    'shots_total': 0,
-    'state':     'idle',      # idle | shooting | reviewing | printing
-    'raw_files': [],          # paths to raw captures for this session
-    'composite': None,        # path to final composited image
+    'active':          False,
+    'token':           None,
+    'template':        None,
+    'shot_num':        0,
+    'shots_total':     0,
+    'state':           'idle',   # idle | shooting | reviewing | printing
+    'raw_files':       [],       # paths to raw captures for this session
+    'composite':       None,     # path to final composited image
+    'composite_valid': False,    # False if composite looks blank (file too small)
 }
 
 # Running totals — persisted to a small JSON file
@@ -709,8 +764,23 @@ def serve_overlay(filename):
 def api_config():
     return jsonify({
         'event_name': config['event_name'],
-        'templates': config['templates']
+        'templates': config['templates'],
+        'gpio_default_template': config.get('gpio_default_template', ''),
     })
+
+
+@app.route('/api/config/gpio-template', methods=['POST'])
+def api_set_gpio_template():
+    """Admin sets which template the button loop uses by default."""
+    data = request.get_json(silent=True) or {}
+    template_id = data.get('template')
+    if template_id not in config['templates']:
+        return jsonify({'error': 'Unknown template'}), 400
+    config['gpio_default_template'] = template_id
+    with open(CONFIG_FILE, 'w') as f:
+        json.dump(config, f, indent=2)
+    log_event('ok', f"GPIO default template → {config['templates'][template_id]['label']}")
+    return jsonify({'ok': True, 'template': template_id})
 
 
 # ── API: Status ──
@@ -732,8 +802,10 @@ def api_status():
         'shots':      stats['shots'],
         'prints':     stats['prints'],
         'sessions':   stats['sessions'],
-        'photos':     photo_registry[-8:],
-        'log':        event_log[-30:],
+        'photos':              photo_registry[-8:],
+        'log':                 event_log[-30:],
+        'gpioTemplate':        config.get('gpio_default_template', ''),
+        'compositeValid':      session['composite_valid'],
     })
 
 
@@ -782,14 +854,15 @@ def api_session_cancel():
 
 
 def _reset_session():
-    session['active']    = False
-    session['token']     = None
-    session['template']  = None
-    session['shot_num']  = 0
-    session['shots_total'] = 0
-    session['state']     = 'idle'
-    session['raw_files'] = []
-    session['composite'] = None
+    session['active']          = False
+    session['token']           = None
+    session['template']        = None
+    session['shot_num']        = 0
+    session['shots_total']     = 0
+    session['state']           = 'idle'
+    session['raw_files']       = []
+    session['composite']       = None
+    session['composite_valid'] = False
 
 
 # ── API: Trigger (fire the shutter) ──
@@ -856,6 +929,15 @@ def _do_composite():
     session['composite'] = output_path
     session['state'] = 'reviewing'
 
+    # Validate composite — reject if suspiciously small (likely blank/no photo fired)
+    actual_bytes = Path(output_path).stat().st_size
+    if actual_bytes < COMPOSITE_MIN_BYTES:
+        session['composite_valid'] = False
+        log_event('err', f'Composite looks blank ({actual_bytes // 1024} KB < {COMPOSITE_MIN_BYTES // 1024} KB threshold) — print blocked')
+    else:
+        session['composite_valid'] = True
+        log_event('ok', f'Composite built ({actual_bytes // 1024} KB) — guest reviewing')
+
     # Register in photo list
     type_map = {
         'single-classic': 'single', 'single-gold': 'single',
@@ -868,8 +950,6 @@ def _do_composite():
         'type':     type_map.get(tpl_id, 'single'),
         'time':     datetime.now().strftime('%-I:%M %p'),
     })
-
-    log_event('ok', 'Composite built — guest reviewing')
 
 
 # ── API: Latest (composited image for review screen) ──
