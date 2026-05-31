@@ -72,7 +72,21 @@ FLASH_PIN     = 17
 INDICATOR_PIN = 18
 SHUTDOWN_PIN  = 27
 
-_PIN_NAMES = {FLASH_PIN: 'FLASH', INDICATOR_PIN: 'INDICATOR', SHUTDOWN_PIN: 'SHUTDOWN'}
+# Button inputs (active LOW, internal pull-up)
+TRIGGER_BTN_PIN = 5
+PRINT_BTN_PIN   = 6
+RESET_BTN_PIN   = 13
+
+# Status / countdown outputs
+READY_LIGHT_PIN  = 19
+COUNTDOWN_PINS   = [26, 20, 21]   # light up 3→2→1 before each shot
+
+_PIN_NAMES = {
+    FLASH_PIN: 'FLASH', INDICATOR_PIN: 'INDICATOR', SHUTDOWN_PIN: 'SHUTDOWN',
+    TRIGGER_BTN_PIN: 'TRIGGER_BTN', PRINT_BTN_PIN: 'PRINT_BTN', RESET_BTN_PIN: 'RESET_BTN',
+    READY_LIGHT_PIN: 'READY_LIGHT',
+    **{p: f'COUNTDOWN_{i+1}' for i, p in enumerate(COUNTDOWN_PINS)},
+}
 
 def _gpio_log(pin: int, state: str):
     print(f"[GPIO] pin {pin} ({_PIN_NAMES.get(pin, '?')}) → {state}")
@@ -80,12 +94,18 @@ def _gpio_log(pin: int, state: str):
 def gpio_setup():
     if _GPIO_AVAILABLE:
         GPIO.setmode(GPIO.BCM)
-        GPIO.setup(FLASH_PIN, GPIO.OUT, initial=GPIO.LOW)
-        GPIO.setup(INDICATOR_PIN, GPIO.OUT, initial=GPIO.LOW)
-        GPIO.setup(SHUTDOWN_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-        print("[GPIO] Setup complete — pins 17 (FLASH), 18 (INDICATOR), 27 (SHUTDOWN)")
+        GPIO.setup(FLASH_PIN,        GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(INDICATOR_PIN,    GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(READY_LIGHT_PIN,  GPIO.OUT, initial=GPIO.LOW)
+        for pin in COUNTDOWN_PINS:
+            GPIO.setup(pin, GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(SHUTDOWN_PIN,     GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        GPIO.setup(TRIGGER_BTN_PIN,  GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        GPIO.setup(PRINT_BTN_PIN,    GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        GPIO.setup(RESET_BTN_PIN,    GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        print("[GPIO] Setup complete")
     else:
-        print("[GPIO] Console-log mode — pins 17 (FLASH), 18 (INDICATOR), 27 (SHUTDOWN)")
+        print("[GPIO] Console-log mode")
 
 def flash_on():
     if _GPIO_AVAILABLE:
@@ -104,6 +124,208 @@ def indicator_set(on: bool):
         GPIO.output(INDICATOR_PIN, GPIO.HIGH if on else GPIO.LOW)
     else:
         _gpio_log(INDICATOR_PIN, 'ON' if on else 'OFF')
+
+def _btn_pressed(pin: int) -> bool:
+    """Return True if button is currently held LOW (debounced)."""
+    if _GPIO_AVAILABLE:
+        if GPIO.input(pin) == GPIO.LOW:
+            time.sleep(0.05)
+            return GPIO.input(pin) == GPIO.LOW
+        return False
+    return False
+
+
+def _wait_for_button(pin: int, timeout: float = None) -> bool:
+    """
+    Block until pin goes LOW or timeout (seconds) elapses.
+    Returns True if button was pressed, False on timeout.
+    Also returns False immediately if RESET_BTN_PIN is pressed (caller handles reset).
+    """
+    start = time.time()
+    while True:
+        if _btn_pressed(RESET_BTN_PIN) and pin != RESET_BTN_PIN:
+            return False
+        if _btn_pressed(pin):
+            # wait for release before returning
+            while _GPIO_AVAILABLE and GPIO.input(pin) == GPIO.LOW:
+                time.sleep(0.05)
+            return True
+        if timeout is not None and (time.time() - start) >= timeout:
+            return False
+        time.sleep(0.05)
+
+
+def _ready_light(on: bool):
+    if _GPIO_AVAILABLE:
+        GPIO.output(READY_LIGHT_PIN, GPIO.HIGH if on else GPIO.LOW)
+    else:
+        _gpio_log(READY_LIGHT_PIN, 'ON' if on else 'OFF')
+
+
+def _countdown_lights_clear():
+    for pin in COUNTDOWN_PINS:
+        if _GPIO_AVAILABLE:
+            GPIO.output(pin, GPIO.LOW)
+        else:
+            _gpio_log(pin, 'OFF')
+
+
+def _countdown(seconds: int = 3):
+    """Light countdown LEDs: all on → drain one per second → capture."""
+    # Turn all on
+    for pin in COUNTDOWN_PINS:
+        if _GPIO_AVAILABLE:
+            GPIO.output(pin, GPIO.HIGH)
+        else:
+            _gpio_log(pin, 'ON')
+
+    # Turn off one per second from the end
+    for i in range(min(seconds, len(COUNTDOWN_PINS))):
+        time.sleep(1)
+        pin = COUNTDOWN_PINS[-(i + 1)]
+        if _GPIO_AVAILABLE:
+            GPIO.output(pin, GPIO.LOW)
+        else:
+            _gpio_log(pin, 'OFF')
+
+    # Any remaining time beyond the LED count
+    extra = seconds - len(COUNTDOWN_PINS)
+    if extra > 0:
+        time.sleep(extra)
+
+
+def gpio_button_loop():
+    """
+    Background thread — drives a complete photo session from three physical
+    buttons (trigger / print / reset) without touching the web UI.
+
+    State machine:
+      IDLE       → trigger pressed → start session
+      COUNTDOWN  → 3-2-1 LEDs → capture shot → repeat for multi-shot templates
+      REVIEWING  → print button to print, reset button to discard
+      PRINTING   → waits for job, then returns to IDLE
+    """
+    log_event('ok', '[BTN] Button loop started')
+    _ready_light(True)
+
+    while True:
+        # ── IDLE: wait for trigger ──────────────────────────────────────
+        _ready_light(True)
+        _countdown_lights_clear()
+
+        pressed = _wait_for_button(TRIGGER_BTN_PIN)
+        if not pressed:
+            # reset was pressed in idle — nothing to cancel, just loop
+            continue
+
+        # ── SESSION START ───────────────────────────────────────────────
+        if session['active']:
+            log_event('warn', '[BTN] Trigger ignored — session already active')
+            continue
+
+        template_id = config.get('gpio_default_template') or next(iter(config['templates']))
+        if template_id not in config['templates']:
+            template_id = next(iter(config['templates']))
+
+        tpl = config['templates'][template_id]
+        session['active']      = True
+        session['token']       = str(uuid.uuid4())
+        session['template']    = template_id
+        session['shot_num']    = 0
+        session['shots_total'] = tpl['shots']
+        session['state']       = 'shooting'
+        session['raw_files']   = []
+        session['composite']   = None
+
+        stats['sessions'] += 1
+        save_stats()
+        camera_connect()
+        _ready_light(False)
+        log_event('ok', f"[BTN] Session started — {tpl['label']} ({tpl['shots']} shot(s))")
+
+        # ── SHOOTING ────────────────────────────────────────────────────
+        cancelled = False
+        while session['shot_num'] < session['shots_total']:
+            _countdown(3)
+
+            if _btn_pressed(RESET_BTN_PIN):
+                cancelled = True
+                break
+
+            ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+            shot_idx = session['shot_num']
+            raw_path = str(PHOTOS_DIR / f"raw_{ts}_{shot_idx}.jpg")
+
+            flash_on()
+            ok = camera_capture(raw_path)
+            flash_off()
+            _countdown_lights_clear()
+
+            if not ok:
+                log_event('err', '[BTN] Capture failed — cancelling session')
+                cancelled = True
+                break
+
+            session['raw_files'].append(raw_path)
+            session['shot_num'] = shot_idx + 1
+            stats['shots'] += 1
+            save_stats()
+            log_event('ok', f"[BTN] Shot {shot_idx + 1}/{session['shots_total']} captured")
+
+            # Brief pause between shots so guest can reposition
+            if session['shot_num'] < session['shots_total']:
+                time.sleep(1.5)
+
+        if cancelled:
+            log_event('warn', '[BTN] Session cancelled during shooting')
+            camera_disconnect()
+            _reset_session()
+            continue
+
+        # ── COMPOSITE ───────────────────────────────────────────────────
+        _do_composite()
+        log_event('ok', '[BTN] Composite ready — waiting for print button')
+
+        # Signal ready-to-print by blinking the ready light
+        def _blink_ready():
+            while session['state'] == 'reviewing':
+                _ready_light(True);  time.sleep(0.4)
+                _ready_light(False); time.sleep(0.4)
+        blink_thread = threading.Thread(target=_blink_ready, daemon=True)
+        blink_thread.start()
+
+        # ── REVIEWING: wait for print or reset ─────────────────────────
+        printed = False
+        review_timeout = 60  # seconds before auto-reset
+        start = time.time()
+        while time.time() - start < review_timeout:
+            if _btn_pressed(RESET_BTN_PIN):
+                log_event('warn', '[BTN] Print discarded by reset button')
+                break
+            if _btn_pressed(PRINT_BTN_PIN):
+                printed = True
+                break
+            time.sleep(0.05)
+
+        _ready_light(False)
+
+        if printed:
+            session['state'] = 'printing'
+            log_event('ok', '[BTN] Print button pressed')
+            ok = printer_print(session['composite'])
+            if ok:
+                stats['prints'] += 1
+                stats['paper'] = max(0, stats['paper'] - 1)
+                save_stats()
+                if stats['paper'] <= 20:
+                    log_event('warn', f"[BTN] Low paper: {stats['paper']} remaining")
+                log_event('ok', f"[BTN] Print submitted — {stats['paper']} sheets remaining")
+            else:
+                log_event('err', '[BTN] Print failed')
+
+        camera_disconnect()
+        _reset_session()
+
 
 def shutdown_monitor():
     """Background thread — polls shutdown button, triggers graceful shutdown."""
@@ -807,6 +1029,9 @@ def startup():
 
     t = threading.Thread(target=shutdown_monitor, daemon=True)
     t.start()
+
+    b = threading.Thread(target=gpio_button_loop, daemon=True)
+    b.start()
 
     log_event('ok', f'PhotoBooth started — camera: {CAMERA_MODEL}')
     log_event('ok', f'Event: {config["event_name"]}')

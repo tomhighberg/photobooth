@@ -3,6 +3,7 @@
   "event_emoji": "🎉",
   "active": true,
   "camera_model": "auto",
+  "gpio_default_template": "strip-party",
   "camera_settings": {
     "Nikon DSC D3400": {
       "capturetarget": "Internal RAM",
