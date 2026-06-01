@@ -13,6 +13,7 @@ to the physical printer (useful when the printer isn't connected).
 
 import os
 import json
+import math
 import time
 import uuid
 import threading
@@ -156,6 +157,57 @@ def gpio_setup():
         print("[GPIO] Console-log mode")
     led_strip_init()
 
+# ── Ready pulse animation ─────────────────────────────────────────────────────
+#
+# Breathing effect on the strip while the booth is idle.
+# Change PULSE_COLOUR to taste — (r, g, b) at full brightness.
+#
+PULSE_COLOUR     = (180, 220, 255)  # cool white-blue
+PULSE_MIN        = 0.02             # dimmest point (0–1)
+PULSE_MAX        = 0.55             # brightest point (0–1)
+PULSE_STEPS      = 60               # steps per full breath cycle
+PULSE_STEP_SECS  = 0.04             # 60 × 0.04s = ~2.4s per cycle
+
+_pulse_stop   = threading.Event()
+_pulse_thread = None
+
+
+def _pulse_ready_strip():
+    """Breathing animation — runs until _pulse_stop is set."""
+    step = 0
+    while not _pulse_stop.is_set():
+        t = 0.5 - 0.5 * math.cos(2 * math.pi * step / PULSE_STEPS)
+        brightness = PULSE_MIN + (PULSE_MAX - PULSE_MIN) * t
+        r = int(PULSE_COLOUR[0] * brightness)
+        g = int(PULSE_COLOUR[1] * brightness)
+        b = int(PULSE_COLOUR[2] * brightness)
+        if _WS281X_AVAILABLE and _led_strip:
+            c = LEDColor(r, g, b)
+            for i in range(LED_COUNT):
+                _led_strip.setPixelColor(i, c)
+            _led_strip.show()
+        step = (step + 1) % PULSE_STEPS
+        _pulse_stop.wait(PULSE_STEP_SECS)
+    # clear strip when stopping
+    if _WS281X_AVAILABLE and _led_strip:
+        for i in range(LED_COUNT):
+            _led_strip.setPixelColor(i, LEDColor(0, 0, 0))
+        _led_strip.show()
+
+
+def _start_pulse():
+    global _pulse_thread
+    _pulse_stop.clear()
+    _pulse_thread = threading.Thread(target=_pulse_ready_strip, daemon=True)
+    _pulse_thread.start()
+
+
+def _stop_pulse():
+    _pulse_stop.set()
+    if _pulse_thread:
+        _pulse_thread.join(timeout=0.5)
+
+
 def flash_on():
     _gpio_log(FLASH_PIN, 'ON')
     if _GPIO_AVAILABLE:
@@ -278,6 +330,7 @@ def gpio_button_loop():
 
         stats['sessions'] += 1
         save_stats()
+        _stop_pulse()
         camera_connect()
         _ready_light(False)
         log_event('ok', f"[BTN] Session started — {tpl['label']} ({tpl['shots']} shot(s))")
@@ -831,6 +884,7 @@ def api_session_start():
     stats['sessions'] += 1
     save_stats()
 
+    _stop_pulse()
     camera_connect()
     _ready_light(False)
     log_event('ok', f"Session started — {tpl['label']}")
@@ -859,6 +913,7 @@ def _reset_session():
     session['composite']       = None
     session['composite_valid'] = False
     _ready_light(True)
+    _start_pulse()
 
 
 # ── API: Countdown (start LED countdown in background, returns immediately) ──
@@ -1122,6 +1177,7 @@ def startup():
     b = threading.Thread(target=gpio_button_loop, daemon=True)
     b.start()
 
+    _start_pulse()
     log_event('ok', f'PhotoBooth started — camera: {CAMERA_MODEL}')
     log_event('ok', f'Event: {config["event_name"]}')
     log_event('ok', f'Paper: {stats["paper"]}/108')
