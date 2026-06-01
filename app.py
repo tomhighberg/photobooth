@@ -86,8 +86,9 @@ PRINT_BTN_PIN   = 6
 RESET_BTN_PIN   = 13
 
 # Status outputs
-READY_LIGHT_PIN  = 19
-UNICORN_PIN      = 24   # decorative light — normally ON, flashes during countdown
+READY_LIGHT_PIN  = 19   # green — idle + shooting ready
+PRINT_READY_PIN  = 23   # red   — valid composite ready to print
+UNICORN_PIN      = 24   # decorative — normally ON, flashes during countdown
 
 # Addressable LED strip (WS2812 / NeoPixel) — single data pin
 LED_STRIP_PIN    = 12   # must be a hardware-PWM-capable pin (BCM 12 or 18)
@@ -103,7 +104,8 @@ _led_strip = None       # initialised in led_strip_init()
 _PIN_NAMES = {
     FLASH_PIN: 'FLASH', INDICATOR_PIN: 'INDICATOR', SHUTDOWN_PIN: 'SHUTDOWN',
     TRIGGER_BTN_PIN: 'TRIGGER_BTN', PRINT_BTN_PIN: 'PRINT_BTN', RESET_BTN_PIN: 'RESET_BTN',
-    READY_LIGHT_PIN: 'READY_LIGHT', LED_STRIP_PIN: 'LED_STRIP', UNICORN_PIN: 'UNICORN',
+    READY_LIGHT_PIN: 'READY_LIGHT', PRINT_READY_PIN: 'PRINT_READY',
+    LED_STRIP_PIN: 'LED_STRIP', UNICORN_PIN: 'UNICORN',
 }
 
 def _gpio_log(pin: int, state: str):
@@ -149,6 +151,7 @@ def gpio_setup():
         GPIO.setup(FLASH_PIN,        GPIO.OUT, initial=GPIO.LOW)
         GPIO.setup(INDICATOR_PIN,    GPIO.OUT, initial=GPIO.LOW)
         GPIO.setup(READY_LIGHT_PIN,  GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(PRINT_READY_PIN,  GPIO.OUT, initial=GPIO.LOW)
         GPIO.setup(UNICORN_PIN,      GPIO.OUT, initial=GPIO.HIGH)  # starts ON
         GPIO.setup(SHUTDOWN_PIN,     GPIO.IN, pull_up_down=GPIO.PUD_UP)
         GPIO.setup(TRIGGER_BTN_PIN,  GPIO.IN, pull_up_down=GPIO.PUD_UP)
@@ -267,6 +270,12 @@ def unicorn_set(on: bool):
         GPIO.output(UNICORN_PIN, GPIO.HIGH if on else GPIO.LOW)
 
 
+def print_ready_set(on: bool):
+    _gpio_log(PRINT_READY_PIN, 'ON' if on else 'OFF')
+    if _GPIO_AVAILABLE:
+        GPIO.output(PRINT_READY_PIN, GPIO.HIGH if on else GPIO.LOW)
+
+
 def _strip_shooting():
     """Solid warm amber — session active, ready to shoot."""
     if _WS281X_AVAILABLE and _led_strip:
@@ -374,7 +383,8 @@ def gpio_button_loop():
         save_stats()
         _stop_pulse()
         camera_connect()
-        _ready_light(False)
+        _ready_light(True)
+        print_ready_set(False)
         _strip_shooting()
         log_event('ok', f"[BTN] Session started — {tpl['label']} ({tpl['shots']} shot(s))")
 
@@ -422,14 +432,6 @@ def gpio_button_loop():
         _do_composite()
         log_event('ok', '[BTN] Composite ready — waiting for print button')
 
-        # Signal ready-to-print by blinking the ready light
-        def _blink_ready():
-            while session['state'] == 'reviewing':
-                _ready_light(True);  time.sleep(0.4)
-                _ready_light(False); time.sleep(0.4)
-        blink_thread = threading.Thread(target=_blink_ready, daemon=True)
-        blink_thread.start()
-
         # ── REVIEWING: wait for print or reset ─────────────────────────
         printed = False
         review_timeout = 60  # seconds before auto-reset
@@ -447,8 +449,6 @@ def gpio_button_loop():
                 printed = True
                 break
             time.sleep(0.05)
-
-        _ready_light(False)
 
         if printed:
             session['state'] = 'printing'
@@ -935,7 +935,8 @@ def api_session_start():
 
     _stop_pulse()
     camera_connect()
-    _ready_light(False)
+    _ready_light(True)
+    print_ready_set(False)
     _strip_shooting()
     log_event('ok', f"Session started — {tpl['label']}")
 
@@ -963,6 +964,7 @@ def _reset_session():
     session['composite']       = None
     session['composite_valid'] = False
     _ready_light(True)
+    print_ready_set(False)
     unicorn_set(True)
     _start_pulse()
 
@@ -1048,9 +1050,13 @@ def _do_composite():
     actual_bytes = Path(output_path).stat().st_size
     if actual_bytes < COMPOSITE_MIN_BYTES:
         session['composite_valid'] = False
+        _ready_light(False)
+        print_ready_set(False)
         log_event('err', f'Composite looks blank ({actual_bytes // 1024} KB < {COMPOSITE_MIN_BYTES // 1024} KB threshold) — print blocked')
     else:
         session['composite_valid'] = True
+        _ready_light(False)
+        print_ready_set(True)
         _strip_ready_to_print()
         log_event('ok', f'Composite built ({actual_bytes // 1024} KB) — guest reviewing')
 
