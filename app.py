@@ -861,6 +861,16 @@ def _reset_session():
     _ready_light(True)
 
 
+# ── API: Countdown (start LED countdown in background, returns immediately) ──
+
+@app.route('/api/countdown', methods=['POST'])
+def api_countdown():
+    def _run():
+        _countdown(3)
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({'ok': True})
+
+
 # ── API: Trigger (fire the shutter) ──
 
 @app.route('/api/trigger', methods=['POST'])
@@ -882,7 +892,6 @@ def api_trigger():
     raw_path = str(PHOTOS_DIR / raw_name)
 
     # Capture
-    _countdown(3)
     flash_on()
     ok = camera_capture(raw_path)
     flash_off()
