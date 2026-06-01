@@ -85,8 +85,10 @@ TRIGGER_BTN_PIN = 5
 PRINT_BTN_PIN   = 6
 RESET_BTN_PIN   = 13
 
-# Status output
-READY_LIGHT_PIN  = 19
+# Status outputs
+READY_LIGHT_PIN  = 19   # green — idle + shooting ready
+PRINT_READY_PIN  = 23   # red   — valid composite ready to print
+UNICORN_PIN      = 24   # decorative — normally ON, flashes during countdown
 
 # Addressable LED strip (WS2812 / NeoPixel) — single data pin
 LED_STRIP_PIN    = 12   # must be a hardware-PWM-capable pin (BCM 12 or 18)
@@ -102,7 +104,8 @@ _led_strip = None       # initialised in led_strip_init()
 _PIN_NAMES = {
     FLASH_PIN: 'FLASH', INDICATOR_PIN: 'INDICATOR', SHUTDOWN_PIN: 'SHUTDOWN',
     TRIGGER_BTN_PIN: 'TRIGGER_BTN', PRINT_BTN_PIN: 'PRINT_BTN', RESET_BTN_PIN: 'RESET_BTN',
-    READY_LIGHT_PIN: 'READY_LIGHT', LED_STRIP_PIN: 'LED_STRIP',
+    READY_LIGHT_PIN: 'READY_LIGHT', PRINT_READY_PIN: 'PRINT_READY',
+    LED_STRIP_PIN: 'LED_STRIP', UNICORN_PIN: 'UNICORN',
 }
 
 def _gpio_log(pin: int, state: str):
@@ -148,6 +151,8 @@ def gpio_setup():
         GPIO.setup(FLASH_PIN,        GPIO.OUT, initial=GPIO.LOW)
         GPIO.setup(INDICATOR_PIN,    GPIO.OUT, initial=GPIO.LOW)
         GPIO.setup(READY_LIGHT_PIN,  GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(PRINT_READY_PIN,  GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(UNICORN_PIN,      GPIO.OUT, initial=GPIO.HIGH)  # starts ON
         GPIO.setup(SHUTDOWN_PIN,     GPIO.IN, pull_up_down=GPIO.PUD_UP)
         GPIO.setup(TRIGGER_BTN_PIN,  GPIO.IN, pull_up_down=GPIO.PUD_UP)
         GPIO.setup(PRINT_BTN_PIN,    GPIO.IN, pull_up_down=GPIO.PUD_UP)
@@ -259,6 +264,40 @@ def _ready_light(on: bool):
         GPIO.output(READY_LIGHT_PIN, GPIO.HIGH if on else GPIO.LOW)
 
 
+def unicorn_set(on: bool):
+    _gpio_log(UNICORN_PIN, 'ON' if on else 'OFF')
+    if _GPIO_AVAILABLE:
+        GPIO.output(UNICORN_PIN, GPIO.HIGH if on else GPIO.LOW)
+
+
+def print_ready_set(on: bool):
+    _gpio_log(PRINT_READY_PIN, 'ON' if on else 'OFF')
+    if _GPIO_AVAILABLE:
+        GPIO.output(PRINT_READY_PIN, GPIO.HIGH if on else GPIO.LOW)
+
+
+def _strip_shooting():
+    """Solid warm amber — session active, ready to shoot."""
+    if _WS281X_AVAILABLE and _led_strip:
+        c = LEDColor(180, 100, 20)
+        for i in range(LED_COUNT):
+            _led_strip.setPixelColor(i, c)
+        _led_strip.show()
+    else:
+        print("[LED] strip → shooting (amber)")
+
+
+def _strip_ready_to_print():
+    """Solid green — composite ready, waiting for print."""
+    if _WS281X_AVAILABLE and _led_strip:
+        c = LEDColor(0, 180, 60)
+        for i in range(LED_COUNT):
+            _led_strip.setPixelColor(i, c)
+        _led_strip.show()
+    else:
+        print("[LED] strip → ready to print (green)")
+
+
 def _countdown_lights_clear():
     led_set_all(0, 0, 0)
 
@@ -278,6 +317,18 @@ _COUNTDOWN_STEPS = [
 
 def _countdown(seconds: int = 3):
     """Run the LED strip countdown then clear. Capture happens after this returns."""
+    # Flash unicorn rapidly for the full countdown duration
+    def _unicorn_flash():
+        end = time.time() + seconds
+        while time.time() < end:
+            unicorn_set(False)
+            time.sleep(0.1)
+            unicorn_set(True)
+            time.sleep(0.1)
+        unicorn_set(True)  # ensure it ends ON
+
+    threading.Thread(target=_unicorn_flash, daemon=True).start()
+
     steps = _COUNTDOWN_STEPS[:seconds]
     for duration, n, r, g, b in steps:
         led_set_count(n, r, g, b)
@@ -332,7 +383,9 @@ def gpio_button_loop():
         save_stats()
         _stop_pulse()
         camera_connect()
-        _ready_light(False)
+        _ready_light(True)
+        print_ready_set(False)
+        _strip_shooting()
         log_event('ok', f"[BTN] Session started — {tpl['label']} ({tpl['shots']} shot(s))")
 
         # ── SHOOTING ────────────────────────────────────────────────────
@@ -366,6 +419,7 @@ def gpio_button_loop():
 
             # Brief pause between shots so guest can reposition
             if session['shot_num'] < session['shots_total']:
+                _strip_shooting()
                 time.sleep(1.5)
 
         if cancelled:
@@ -377,14 +431,6 @@ def gpio_button_loop():
         # ── COMPOSITE ───────────────────────────────────────────────────
         _do_composite()
         log_event('ok', '[BTN] Composite ready — waiting for print button')
-
-        # Signal ready-to-print by blinking the ready light
-        def _blink_ready():
-            while session['state'] == 'reviewing':
-                _ready_light(True);  time.sleep(0.4)
-                _ready_light(False); time.sleep(0.4)
-        blink_thread = threading.Thread(target=_blink_ready, daemon=True)
-        blink_thread.start()
 
         # ── REVIEWING: wait for print or reset ─────────────────────────
         printed = False
@@ -403,8 +449,6 @@ def gpio_button_loop():
                 printed = True
                 break
             time.sleep(0.05)
-
-        _ready_light(False)
 
         if printed:
             session['state'] = 'printing'
@@ -564,22 +608,27 @@ def _capture_webcam(output_path: str) -> bool:
 
 def _capture_gphoto2(output_path: str) -> bool:
     global _camera
-    if _camera is None:
-        if not camera_connect():
-            return False
-    try:
-        file_path = _camera.capture(gp.GP_CAPTURE_IMAGE)
-        print(f"[CAM] Camera file: {file_path.folder}/{file_path.name}")
-        camera_file = _camera.file_get(
-            file_path.folder, file_path.name, gp.GP_FILE_TYPE_NORMAL
-        )
-        camera_file.save(output_path)
-        print(f"[CAM] {CAMERA_MODEL} captured → {output_path}")
-        return True
-    except Exception as e:
-        print(f"[ERR] {CAMERA_MODEL} capture failed: {e}")
-        camera_disconnect()
-        return False
+    for attempt in range(3):
+        if _camera is None:
+            print(f"[CAM] Connect attempt {attempt + 1}/3…")
+            if not camera_connect():
+                time.sleep(2)
+                continue
+        try:
+            file_path = _camera.capture(gp.GP_CAPTURE_IMAGE)
+            print(f"[CAM] Camera file: {file_path.folder}/{file_path.name}")
+            camera_file = _camera.file_get(
+                file_path.folder, file_path.name, gp.GP_FILE_TYPE_NORMAL
+            )
+            camera_file.save(output_path)
+            print(f"[CAM] {CAMERA_MODEL} captured → {output_path}")
+            return True
+        except Exception as e:
+            print(f"[ERR] {CAMERA_MODEL} capture attempt {attempt + 1}/3 failed: {e}")
+            camera_disconnect()
+            time.sleep(2)
+    print(f"[ERR] {CAMERA_MODEL} capture failed after 3 attempts")
+    return False
 
 # ── PRINTER ──
 
@@ -886,7 +935,9 @@ def api_session_start():
 
     _stop_pulse()
     camera_connect()
-    _ready_light(False)
+    _ready_light(True)
+    print_ready_set(False)
+    _strip_shooting()
     log_event('ok', f"Session started — {tpl['label']}")
 
     return jsonify({'token': session['token'], 'shots': tpl['shots']})
@@ -913,6 +964,8 @@ def _reset_session():
     session['composite']       = None
     session['composite_valid'] = False
     _ready_light(True)
+    print_ready_set(False)
+    unicorn_set(True)
     _start_pulse()
 
 
@@ -997,9 +1050,14 @@ def _do_composite():
     actual_bytes = Path(output_path).stat().st_size
     if actual_bytes < COMPOSITE_MIN_BYTES:
         session['composite_valid'] = False
+        _ready_light(False)
+        print_ready_set(False)
         log_event('err', f'Composite looks blank ({actual_bytes // 1024} KB < {COMPOSITE_MIN_BYTES // 1024} KB threshold) — print blocked')
     else:
         session['composite_valid'] = True
+        _ready_light(False)
+        print_ready_set(True)
+        _strip_ready_to_print()
         log_event('ok', f'Composite built ({actual_bytes // 1024} KB) — guest reviewing')
 
     # Register in photo list
@@ -1177,6 +1235,7 @@ def startup():
     b = threading.Thread(target=gpio_button_loop, daemon=True)
     b.start()
 
+    unicorn_set(True)
     _start_pulse()
     log_event('ok', f'PhotoBooth started — camera: {CAMERA_MODEL}')
     log_event('ok', f'Event: {config["event_name"]}')
