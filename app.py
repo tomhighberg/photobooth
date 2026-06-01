@@ -122,25 +122,23 @@ def led_strip_init():
 
 def led_set_all(r: int, g: int, b: int):
     """Set all LEDs to a single RGB colour. Pass (0,0,0) to clear."""
+    print(f"[LED] all → rgb({r},{g},{b})")
     if _WS281X_AVAILABLE and _led_strip:
         c = LEDColor(r, g, b)
         for i in range(LED_COUNT):
             _led_strip.setPixelColor(i, c)
         _led_strip.show()
-    else:
-        print(f"[LED] all → rgb({r},{g},{b})")
 
 
 def led_set_count(n: int, r: int, g: int, b: int):
     """Light the first n LEDs in colour (r,g,b), clear the rest."""
+    print(f"[LED] {n}/{LED_COUNT} lit → rgb({r},{g},{b})")
     if _WS281X_AVAILABLE and _led_strip:
         on_c  = LEDColor(r, g, b)
         off_c = LEDColor(0, 0, 0)
         for i in range(LED_COUNT):
             _led_strip.setPixelColor(i, on_c if i < n else off_c)
         _led_strip.show()
-    else:
-        print(f"[LED] {n}/{LED_COUNT} lit → rgb({r},{g},{b})")
 
 
 def gpio_setup():
@@ -159,22 +157,19 @@ def gpio_setup():
     led_strip_init()
 
 def flash_on():
+    _gpio_log(FLASH_PIN, 'ON')
     if _GPIO_AVAILABLE:
         GPIO.output(FLASH_PIN, GPIO.HIGH)
-    else:
-        _gpio_log(FLASH_PIN, 'ON')
 
 def flash_off():
+    _gpio_log(FLASH_PIN, 'OFF')
     if _GPIO_AVAILABLE:
         GPIO.output(FLASH_PIN, GPIO.LOW)
-    else:
-        _gpio_log(FLASH_PIN, 'OFF')
 
 def indicator_set(on: bool):
+    _gpio_log(INDICATOR_PIN, 'ON' if on else 'OFF')
     if _GPIO_AVAILABLE:
         GPIO.output(INDICATOR_PIN, GPIO.HIGH if on else GPIO.LOW)
-    else:
-        _gpio_log(INDICATOR_PIN, 'ON' if on else 'OFF')
 
 def _btn_pressed(pin: int) -> bool:
     """Return True if button is currently held LOW (debounced)."""
@@ -207,10 +202,9 @@ def _wait_for_button(pin: int, timeout: float = None) -> bool:
 
 
 def _ready_light(on: bool):
+    _gpio_log(READY_LIGHT_PIN, 'ON' if on else 'OFF')
     if _GPIO_AVAILABLE:
         GPIO.output(READY_LIGHT_PIN, GPIO.HIGH if on else GPIO.LOW)
-    else:
-        _gpio_log(READY_LIGHT_PIN, 'ON' if on else 'OFF')
 
 
 def _countdown_lights_clear():
