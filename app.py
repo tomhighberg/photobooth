@@ -882,9 +882,11 @@ def api_trigger():
     raw_path = str(PHOTOS_DIR / raw_name)
 
     # Capture
+    _countdown(3)
     flash_on()
     ok = camera_capture(raw_path)
     flash_off()
+    _countdown_lights_clear()
     if not ok:
         return jsonify({'error': 'Capture failed'}), 500
 
