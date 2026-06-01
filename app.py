@@ -162,7 +162,7 @@ def gpio_setup():
 # Breathing effect on the strip while the booth is idle.
 # Change PULSE_COLOUR to taste — (r, g, b) at full brightness.
 #
-PULSE_COLOUR     = (52, 21, 57)  # cool white-blue
+PULSE_COLOUR     = (0, 255, 255)  # cool white-blue
 PULSE_MIN        = 0.05             # dimmest point (0–1)
 PULSE_MAX        = 0.70             # brightest point (0–1)
 PULSE_STEPS      = 100               # steps per full breath cycle
