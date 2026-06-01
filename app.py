@@ -832,6 +832,7 @@ def api_session_start():
     save_stats()
 
     camera_connect()
+    _ready_light(False)
     log_event('ok', f"Session started — {tpl['label']}")
 
     return jsonify({'token': session['token'], 'shots': tpl['shots']})
@@ -857,6 +858,7 @@ def _reset_session():
     session['raw_files']       = []
     session['composite']       = None
     session['composite_valid'] = False
+    _ready_light(True)
 
 
 # ── API: Trigger (fire the shutter) ──
@@ -880,7 +882,9 @@ def api_trigger():
     raw_path = str(PHOTOS_DIR / raw_name)
 
     # Capture
+    flash_on()
     ok = camera_capture(raw_path)
+    flash_off()
     if not ok:
         return jsonify({'error': 'Capture failed'}), 500
 
