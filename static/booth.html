@@ -488,6 +488,7 @@ async function triggerShot() {
     sub.textContent = tpl.shots > 1 ? `Shot ${i + 1} of ${tpl.shots} — smile! 😁` : 'Smile! 😁';
     buildPips(tpl.shots);
 
+    fetch('/api/countdown', { method: 'POST' });
     await runCountdown(num);
 
     const data = await fetch('/api/trigger', {
