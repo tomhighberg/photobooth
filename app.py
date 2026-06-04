@@ -176,6 +176,11 @@ PULSE_STEP_SECS  = 0.04             # 60 × 0.04s = ~2.4s per cycle
 _pulse_stop   = threading.Event()
 _pulse_thread = None
 
+# Ready-light flash (blinks READY_LIGHT while booth is busy — shooting,
+# compositing, or reviewing — so guests know not to press trigger again).
+_ready_flash_stop   = threading.Event()
+_ready_flash_thread = None
+
 
 def _pulse_ready_strip():
     """Breathing animation — runs until _pulse_stop is set."""
@@ -211,6 +216,29 @@ def _stop_pulse():
     _pulse_stop.set()
     if _pulse_thread:
         _pulse_thread.join(timeout=0.5)
+
+
+def _ready_flash_loop():
+    """Blink READY_LIGHT at ~4 Hz while booth is busy (shooting/composite/review)."""
+    on = True
+    while not _ready_flash_stop.is_set():
+        _ready_light(on)
+        on = not on
+        _ready_flash_stop.wait(0.25)
+    _ready_light(False)
+
+
+def _start_ready_flash():
+    global _ready_flash_thread
+    _ready_flash_stop.clear()
+    _ready_flash_thread = threading.Thread(target=_ready_flash_loop, daemon=True)
+    _ready_flash_thread.start()
+
+
+def _stop_ready_flash():
+    _ready_flash_stop.set()
+    if _ready_flash_thread:
+        _ready_flash_thread.join(timeout=0.5)
 
 
 def flash_on():
@@ -383,7 +411,7 @@ def gpio_button_loop():
         save_stats()
         _stop_pulse()
         camera_connect()
-        _ready_light(True)
+        _start_ready_flash()
         print_ready_set(False)
         _strip_shooting()
         log_event('ok', f"[BTN] Session started — {tpl['label']} ({tpl['shots']} shot(s))")
@@ -963,6 +991,7 @@ def _reset_session():
     session['raw_files']       = []
     session['composite']       = None
     session['composite_valid'] = False
+    _stop_ready_flash()
     _ready_light(True)
     print_ready_set(False)
     unicorn_set(True)
