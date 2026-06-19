@@ -309,7 +309,6 @@ body::after {
   <div class="done-check">✓</div>
   <div class="title" style="font-size:44px;" id="doneTitle">Printing!</div>
   <div class="subtitle" id="doneSub">Your photo is on its way. Grab it from the printer in about 30 seconds.</div>
-  <button class="pill-btn ghost" onclick="reset()" style="margin-top:8px;">Start Over</button>
 </div>
 
 
@@ -545,16 +544,20 @@ fetch('/api/latest').then(r => r.ok ? r.json() : null).then(d => {
 });
 }
 
+function autoDone(title, sub) {
+  document.getElementById('doneTitle').textContent = title;
+  document.getElementById('doneSub').textContent = sub;
+  go(6);
+  setTimeout(() => { window.location.href = '/'; }, 8000);
+}
+
 function doPrint() {
   fetch('/api/print', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({ token: sessionToken })
   }).then(() => {
-    document.getElementById('doneTitle').textContent = 'Printing!';
-    document.getElementById('doneSub').textContent =
-      'Your photo is on its way. Grab it from the printer in about 30 seconds.';
-    go(6);
+    autoDone('Printing!', 'Your photo is on its way. Grab it from the printer in about 30 seconds.');
   });
 }
 
@@ -569,19 +572,13 @@ function doDownload() {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ token: sessionToken })
     });
-    document.getElementById('doneTitle').textContent = 'Saved!';
-    document.getElementById('doneSub').textContent =
-      'Your photo has been saved. Check your downloads folder.';
-    go(6);
+    autoDone('Saved!', 'Your photo has been saved. Check your downloads folder.');
   });
 }
 
 function doSkip() {
   fetch('/api/session/cancel', { method: 'POST' });
-  document.getElementById('doneTitle').textContent = 'Thanks!';
-  document.getElementById('doneSub').textContent = 
-    'Hope you had fun! Step aside for the next guest.';
-  go(6);
+  autoDone('Thanks!', 'Hope you had fun! Step aside for the next guest.');
 }
 
 // ── Init ──

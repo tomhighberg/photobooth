@@ -824,7 +824,7 @@ def scan_existing_photos():
     """On startup, rebuild the registry from the photos/ directory."""
     for f in sorted(PHOTOS_DIR.glob('composite_*.jpg')):
         photo_registry.append({
-            'id': len(photo_registry) + 1,
+            'id': (max(p['id'] for p in photo_registry) + 1) if photo_registry else 1,
             'file': f.name,
             'template': 'Unknown',
             'type': 'single',
@@ -1095,7 +1095,7 @@ def _do_composite():
         'strip-film': 'strip', 'strip-party': 'grid',
     }
     photo_registry.append({
-        'id':       len(photo_registry) + 1,
+        'id':       (max(p['id'] for p in photo_registry) + 1) if photo_registry else 1,
         'file':     output_name,
         'template': tpl['label'],
         'type':     type_map.get(tpl_id, 'single'),
